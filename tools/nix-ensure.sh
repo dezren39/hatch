@@ -47,6 +47,27 @@ for line in \
     || echo "$line" >> /etc/nix/nix.conf
 done
 
+# /etc/passwd and /etc/group live on the overlay, so the nixbld build users
+# (created by the original nix installer as gid 993 / uids 999-1008) vanish
+# on every recycle — but nix.conf above sets `build-users-group = nixbld`,
+# so any nix build fails with "the group 'nixbld' does not exist" until they
+# come back. Recreate them idempotently (first found 2026-09-30: the
+# 11:12-12:02 recycle wiped them and every nix build broke).
+ensure_nixbld_users() {
+  if ! getent group nixbld >/dev/null; then
+    groupadd -g 993 nixbld
+  fi
+  for i in $(seq 1 10); do
+    getent passwd "nixbld$i" >/dev/null || \
+      useradd -u $((998 + i)) -g nixbld -M -s /usr/sbin/nologin \
+        -d /var/empty "nixbld$i"
+    # nix refuses "the build users group 'nixbld' has no members" unless the
+    # users are listed as supplementary members too (primary group isn't enough)
+    usermod -aG nixbld "nixbld$i"
+  done
+}
+ensure_nixbld_users
+
 nix_works() {
   [ -x "$PROFILE_NIX" ] && "$PROFILE_NIX" eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
 }

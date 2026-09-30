@@ -54,6 +54,15 @@ worth recording.
   via a local derivation probe). The nixbld group has traverse-only
   (`--x`) ACLs on `/home/hatch`, `/home/hatch/nix-persist`, and
   `~/tools/taint-shim` (set via python3 ctypes; `setfacl` not installed).
+  - **Recycle gotcha (hit 2026-09-30):** /etc/passwd and /etc/group live on
+    the ephemeral overlay, so the nixbld group + users vanish on every
+    recycle — but nix.conf still says `build-users-group = nixbld`, and every
+    nix build then fails ("the group 'nixbld' does not exist"). Re-create
+    with the ORIGINAL ids (group gid 993 — the persistent btrfs ACLs
+    reference that gid; users nixbld1..10 uids 999..1008), and list them as
+    supplementary members (`usermod -aG`) — nix errors "has no members" if
+    they only have it as primary group. Now handled in nix-ensure.sh
+    (`ensure_nixbld_users`), so recycles self-heal.
   - `~/tools/nix-ensure.sh` — fast (~0.2s) when healthy. NEVER auto-deletes or
     quarantines the persistent dir on failure (fail loud); NEVER extracts over
     a non-empty tree (tar hardlinks aren't idempotent — moves aside as
