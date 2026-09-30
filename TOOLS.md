@@ -99,7 +99,10 @@ worth recording.
     `git+file:///home/hatch?dir=tools/dispatcher/omnibin`) with no rev, so a
     dirty-tree change like a lock bump doesn't register — `nix profile list`
     still shows the old store path. Fix: `nix profile remove <element-name>`
-    first, then add. (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #269.)
+    first, then add — and the element NAME is what `nix profile list` prints
+    (e.g. `tools/dispatcher/omnibin`), NOT the package name; `remove mcpx`
+    matches nothing and errors, leaving the stale add a no-op.
+    (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #269; again for #271.)
   - `~/tools/nix-profile-sync.sh` symlinks `~/.nix-profile/bin/*` into
     `/usr/local/bin/` so `nix profile install`ed apps (e.g. cowsay) are on the
     PATH in every shell with no wrappers per program. Skips `nix*` (the
