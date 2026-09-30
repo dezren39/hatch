@@ -1,0 +1,71 @@
+# === Nix store (binaries, large) ===
+nix-persist/
+
+# === User private files ===
+user/
+
+# === Logs and telemetry ===
+logs/
+
+# === System dot dirs (caches, configs, keys) ===
+.cache/
+.config/
+.local/
+.pki/
+.ssh/
+.rustup/
+.nix-defexpr/
+.nix-portable/
+.nix-profile
+.postgres-ready
+.hatch-db-change-signals
+runtime.lock
+
+# === Toolchain binaries (reinstalled via scripts) ===
+tools/go/
+tools/cargo/
+tools/rustup/
+tools/nix-portable
+
+# === Large archives ===
+tools/*.tar.gz
+tools/*.tar.zst
+tools/*.prev
+*.tar.zst
+
+# === Compiled artifacts (source is tracked) ===
+tools/taint-shim/*.so
+tools/taint-shim/*.o
+
+# === Test directories ===
+captest/
+taint-test/
+tools/chowntest
+
+# === Personal / sensitive (never track) ===
+MEMORY.md
+USER.md
+PROACTIVE_PREFERENCES.md
+SOUL.md
+IDENTITY.md
+HEARTBEAT.md
+AGENTS.md
+
+# === Platform runtime state ===
+# agents/ contains subagent execution records (sessions.json metadata +
+# .jsonl transcripts). Too sensitive for git — never track.
+agents/
+assets/
+config/
+data/
+dreams/
+hooks/
+memory/
+subscriptions/
+workspace/*
+!workspace/avatars/
+!workspace/avatars/*
+go/
+
+# === Platform docs (Meta maintains them, but we track them to see changes) ===
+# (docs/ is tracked)
