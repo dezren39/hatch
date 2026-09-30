@@ -17,7 +17,8 @@ for src in "$PROFILE_BIN"/*; do
   [ -e "$src" ] || continue
   name=$(basename "$src")
   case "$name" in
-    nix*) continue ;;  # nix suite: use the LD_PRELOAD wrapper instead
+    nix|nix-*) continue ;;  # nix suite: use the LD_PRELOAD wrapper instead
+                            # (nixfmt etc. do NOT match: they lack the dash)
   esac
   dest="$TARGET_DIR/$name"
   [ -e "$dest" ] && [ ! -L "$dest" ] && continue        # real file: leave alone

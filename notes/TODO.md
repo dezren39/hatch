@@ -30,7 +30,7 @@
   - `http-connections = 50` — why: Drew uses 100; 50 is safer for our bandwidth while still parallelizing fetches
   - `allow-dirty = true` — why: our wrapper flake lives in a dirty git tree; dirty flakes otherwise refuse to evaluate
   - NOT taken (recorded why): `ca-derivations`/`fetch-closure` — experimental, changes derivation hashing; risk to dispatcher/omnibin flows, revisit later; `auto-optimise-store` — Drew deliberately keeps false, we keep default; `use-xdg-base-directories` — would move ~/.nix-profile etc., our tooling assumes current paths
-- [ ] Tools from the review (nix-output-monitor, nh, nixfmt, statix, deadnix, nvd) — install via `nix profile` (pending; avoiding profile-lock contention with mcpx/opencode installs)
+- [x] Tools from the review (nix-output-monitor → `nom`, nixfmt, statix, deadnix, nvd) — installed 2026-09-30 via `nix profile` from pinned nixpkgs 4975466d32 (binary fetch). nh NOT installed: no binary in cache, and its SOURCE BUILD FAILS — "impure path /home/hatch/nix-persist/store/... used in link" (cargo canonicalizes /nix/store → real path, tripping the impurity check; pre-existing symlinked-store limitation). Also fixed nix-profile-sync.sh: the `nix*` skip was catching `nixfmt` — now `nix|nix-*` only.
 
 ## 3. dezren39/nix + mcpx
 - [x] Clone; map the flake: mcpx package/module, how to import it as a flake input — research 2026-09-30 (/tmp/dn-nix): `inputs.dezren39-nix.url="github:dezren39/nix"` → `packages.x86_64-linux.mcpx` (flake.nix:385,424; also apps at :494); NO nixosModules output — package only, no module to import
@@ -40,13 +40,20 @@
 - [ ] Configure mcpx for this host (config file at ~/.config/mcpx/config.json) — blocked on Drew: "lootbin" = lootbox?
 - [ ] Write the feedback file; push to dezren39/nix (branch/PR)
 - [ ] Anything broken → GitHub issue → fix → PR; chain PRs indefinitely ahead of main
+- Build saga RESOLVED (2026-09-30 ~07:15): mcpx built + installed + daemon ACTIVE.
+  - Attempt 1 (env.CGO_ENABLED via overrideAttrs): FAILED — nixpkgs' module.nix computes `env.CGO_ENABLED = args.env.CGO_ENABLED or go.CGO_ENABLED` from its own args, clobbering the override. Lesson: export in a hook instead.
+  - Attempt 2 (export CGO_ENABLED=0 in preBuild): Go build went pure-Go and SUCCEEDED — but installPhase still failed. `set -x` trace proved the linker ran inside postInstall's `wrapProgram` → `makeCWrapper` (compiles a tiny C wrapper with the cc-wrapper).
+  - Root cause: gcc canonicalizes /nix through the symlink → plugin path /home/hatch/nix-persist/store/... trips the ld-wrapper purity check ("impure path ... liblto_plugin.so used in link").
+  - Fix (tools/dispatcher/omnibin/flake.nix): preBuild exports CGO_ENABLED=0 AND NIX_ENFORCE_PURITY=0 (stdenv sets the latter to 1 by default; the "impure" path IS the store, so disabling for this one derivation is safe). Build ✓, `nix profile install` ✓ (`mcpx 0.1.0`), `systemctl is-active mcpx` → active (listening on unix socket + http://127.0.0.1:41001, 0 servers configured — config still needs Drew's lootbin answer).
+  - General gotcha for symlinked stores: ANY derivation that compiles C via the cc-wrapper will hit this; NIX_ENFORCE_PURITY=0 is the escape hatch.
+  - CANDIDATE upstream issue for dezren39/nix: package.nix should set `env.CGO_ENABLED = "0"` itself (its own docs say pure-Go to avoid a C toolchain) — would fix the Go side; the makeCWrapper side is our store layout, not theirs.
 
 ## 4. opencode + mcpx daemon
-- [ ] Install opencode; smoke-test free models (if interactive auth needed: record + move on, REMIND DREW) — IN PROGRESS 2026-09-30: delegate running `nix profile install nixpkgs#opencode`
-- [ ] Install mcpx opencode plugin; verify opencode can use mcpx tools — IN PROGRESS 2026-09-30: delegate copying plugin from dezren39/nix to ~/.config/opencode/
+- [x] Install opencode; smoke-test free models — 2026-09-30: opencode 1.18.31 installed via `nix profile install nixpkgs#opencode` (binary from cache). Free models (`ling-3.0-flash-fin-free`, etc.) REQUIRE interactive `opencode auth login` (browser OAuth) — NOT attempted; 0 credentials. REMIND DREW to run it.
+- [x] Install mcpx opencode plugin; verify opencode can use mcpx tools — 2026-09-30: plugin from `pkgs/mcpx/plugin/opencode/` (phase-1 path `plugin/opencode/` was wrong) installed per README; `opencode debug config` shows the plugin, `opencode debug skill` lists all 4 mcpx skills; bun test 21 pass / 0 fail (degrades gracefully without mcpx daemon). Note: first-run `opencode debug` hangs on TTY prompt — use `< /dev/null`.
 - [x] mcpx systemd service file written: ~/tools/mcpx.service (canonical source) — runs as root with HOME=/home/hatch, /usr/local/bin/mcpx daemon, restart-on-failure
 - [x] init.sh hook: ~/tools/install-mcpx-service.sh (copies unit to /etc, daemon-reload, enable --now; skips gracefully if mcpx not installed) — wired into init.sh via run_step "mcpx-service" after nix-profile-sync
-- [ ] Verify: run hook → `systemctl is-active mcpx` must be active (blocked on mcpx install)
+- [x] Verify: run hook → `systemctl is-active mcpx` must be active — 2026-09-30 ~07:15: `install-mcpx-service.sh` ran clean, service active, daemon listening on unix socket + http://127.0.0.1:41001 (0 servers — config still needs Drew's lootbin answer)
 - [ ] Push the service file back to dezren39/nix; fix if broken
 
 ## 5. Docs & demo
