@@ -24,19 +24,19 @@
  *
  * Debug: TAINT_SHIM_LOG=1 logs each intercepted call to stderr.
  *
- * NOTE (2026-09-30): removing the stat/lstat symlink-spoofing in favor of
- * nix's native `allow-symlinked-store = true` was TESTED and REJECTED. The
- * setting only bypasses the LocalStore constructor guard; three other
- * checks ignore it:
- *   1. PosixSourceAccessor::assertNoSymlinks (libnixutil) — fires on
- *      `nix store add-file` / flake source handling in 2.34.8
- *      ("path '/nix' is a symlink"); 2.35.2 still walks ancestors
- *      ("(or its ancestor) is a symlink").
- *   2. The build sandbox setup refuses a symlinked /nix outright:
- *      'Path "/nix" is world-writable or a symlink. That's not allowed
- *      for security.' — genuine local builds NEED this interception.
- * Also: symlinks report mode 0777, which tripped the "world-writable"
- * half of check #2 — the spoof now also masks the mode to 0755.
+ * NOTE (2026-09-30, phase 2): the full stat/lstat symlink-spoofing was
+ * REMOVED and replaced with a mode mask (see bottom of file). Findings on
+ * nix 2.35.2: the `real` store-dir setting from the phase-1 research does NOT
+ * exist ("unknown setting 'real'"); `allow-symlinked-store = true` covers the
+ * LocalStore guard and eval/add-file/profile/gc all pass with no spoofing.
+ * Two sandbox quirks still need the shim: (1) removexattr on
+ * user.hatch_tainted* is denied even for root — local builds fail with EPERM
+ * registering the .drv without the xattr handling; (2) the build sandbox's
+ * checkNotWorldWritable (derivation-builder.cc:356, called at :389 when
+ * building as a build user) walks the build dir's ancestors and rejects any
+ * path with S_IWOTH — symlinks always report 0777, so /nix trips it unless
+ * the mode is masked to 0755. The symlink bit itself is now reported
+ * truthfully. Verified: local build runs as nixbld1 (uid 999).
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -224,65 +224,46 @@ int fchownat(int dirfd, const char *path, uid_t owner, gid_t group, int flags) {
     return real(dirfd, path, owner, group, flags);
 }
 
-/* ---- stat family: hide /nix symlink from nix's store check ----
-   nix refuses to run when /nix is a symlink ("not allowed for the Nix
-   store"). We keep /nix as a symlink to the persistent tree
-   (/home/hatch/nix-persist) so it survives recycles with no copy and no
-   per-exec setup. Here we lie: report /nix as a directory. The kernel
-   still resolves the symlink transparently for all real file operations;
-   only the symlink-ness is hidden. Everything else passes through. */
+/* ---- stat family: mask /nix symlink mode (not the symlink itself) ----
+   nix 2.35.2's build sandbox (derivation-builder.cc:356 checkNotWorldWritable,
+   called at :389 when building as a build user) walks from the build dir up
+   to / and rejects any path with S_IWOTH set. Symlinks always report mode
+   0777, so /nix (a symlink to the persistent store) trips it. We report 0755
+   instead. The symlink bit stays truthful — only the meaningless mode is
+   masked. (The old full spoof also hid S_ISLNK; re-tested 2026-09-30 on
+   2.35.2 with allow-symlinked-store=true: the mode mask alone suffices.) */
 static int is_nix_root(const char *path) {
     return path != NULL && (strcmp(path, "/nix") == 0 || strcmp(path, "/nix/") == 0);
 }
 
-static void hide_nix_symlink(struct stat *st) {
-    if (S_ISLNK(st->st_mode)) {
-        st->st_mode &= ~S_IFMT;
-        st->st_mode |= S_IFDIR;
-        /* Symlinks always report mode 0777; a world-writable /nix trips
-           nix's build-sandbox security check ("world-writable or a
-           symlink"). Report a sane directory mode instead. */
-        st->st_mode = (st->st_mode & ~07777) | 0755;
-    }
-}
+#define MASK_IF_NIX_SYMLINK(path, stp) do { \
+    if (is_nix_root(path) && S_ISLNK((stp)->st_mode)) { \
+        (stp)->st_mode = ((stp)->st_mode & ~07777) | 0755; \
+        LOG("stat(%s): masked symlink mode -> 0755", path); \
+    } \
+} while (0)
 
-int lstat64(const char *path, struct stat64 *buf) {
-    int (*real)(const char *, struct stat64 *) = dlsym(RTLD_NEXT, "lstat64");
-    int ret = real(path, buf);
-    if (ret == 0 && is_nix_root(path) && S_ISLNK(buf->st_mode)) {
-        buf->st_mode &= ~S_IFMT;
-        buf->st_mode |= S_IFDIR;
-        buf->st_mode = (buf->st_mode & ~07777) | 0755;
-        LOG("lstat64(%s) -> hid symlink", path);
-    }
-    return ret;
-}
 int lstat(const char *path, struct stat *buf) {
     int (*real)(const char *, struct stat *) = dlsym(RTLD_NEXT, "lstat");
     int ret = real(path, buf);
-    if (ret == 0 && is_nix_root(path)) {
-        hide_nix_symlink(buf);
-        LOG("lstat(%s) -> hid symlink", path);
-    }
-    return ret;
-}
-int stat64(const char *path, struct stat64 *buf) {
-    int (*real)(const char *, struct stat64 *) = dlsym(RTLD_NEXT, "stat64");
-    int ret = real(path, buf);
-    if (ret == 0 && is_nix_root(path)) {
-        buf->st_mode &= ~S_IFMT;
-        buf->st_mode |= S_IFDIR;
-        buf->st_mode = (buf->st_mode & ~07777) | 0755;
-        LOG("stat64(%s) -> hid symlink", path);
-    }
+    if (ret == 0) MASK_IF_NIX_SYMLINK(path, buf);
     return ret;
 }
 int stat(const char *path, struct stat *buf) {
     int (*real)(const char *, struct stat *) = dlsym(RTLD_NEXT, "stat");
     int ret = real(path, buf);
-    if (ret == 0 && is_nix_root(path)) {
-        hide_nix_symlink(buf);
-        LOG("stat(%s) -> hid symlink", path);
-    }
+    if (ret == 0) MASK_IF_NIX_SYMLINK(path, buf);
+    return ret;
+}
+int lstat64(const char *path, struct stat64 *buf) {
+    int (*real)(const char *, struct stat64 *) = dlsym(RTLD_NEXT, "lstat64");
+    int ret = real(path, buf);
+    if (ret == 0) MASK_IF_NIX_SYMLINK(path, buf);
+    return ret;
+}
+int stat64(const char *path, struct stat64 *buf) {
+    int (*real)(const char *, struct stat64 *) = dlsym(RTLD_NEXT, "stat64");
+    int ret = real(path, buf);
+    if (ret == 0) MASK_IF_NIX_SYMLINK(path, buf);
     return ret;
 }

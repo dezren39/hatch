@@ -18,16 +18,27 @@ nix-portable (bwrap backend, nix 2.20.6) hit this in two places:
 
 ## What the shim does
 Makes `user.hatch_tainted*` invisible to the process, elides redundant chowns,
-and hides the /nix symlink from nix's store guard:
+and masks the /nix symlink's mode so the build sandbox accepts it:
 - `removexattr`/`lremovexattr`/`fremovexattr` on taint attrs -> pretend success
 - `getxattr`/`lgetxattr`/`fgetxattr` on taint attrs -> pretend absent (ENODATA)
 - `listxattr`/`llistxattr` -> report and return the TAINT-FREE view only
 - `chown`/`lchown`/`fchown`/`fchownat` -> elide when the requested uid/gid
   already match (or are -1); otherwise pass through and fail honestly
-- `stat`/`lstat`/`stat64`/`lstat64` on `/nix` -> report as directory even when
-  it's a symlink (nix refuses a symlinked store root; the symlink itself
-  resolves transparently for all real I/O)
+- `stat`/`lstat`/`stat64`/`lstat64` on `/nix` -> if it's a symlink, mask the
+  mode to 0755 (symlinks always report 0777, which trips nix 2.35.2's build
+  sandbox `checkNotWorldWritable`, derivation-builder.cc:356, when building
+  as a build user). The symlink bit itself is reported truthfully.
 - everything else passes through to real libc untouched
+
+Phase-2 change (2026-09-30): the old full symlink spoofing (reporting /nix
+as a directory) was removed. On nix 2.35.2, `allow-symlinked-store = true`
+covers the LocalStore guard, and eval / local builds (as nixbld1) / add-file /
+profile / gc / flake metadata+update all pass with only the mode mask. The
+`real` store-dir setting from the phase-1 research does not exist in this nix
+version ("unknown setting 'real'"). One pre-existing limitation, unaffected
+by this change: fetching a fresh tarball flake (e.g. `builtins.getFlake
+"nixpkgs"`) fails with "(or its ancestor) is a symlink" under both the old
+and new shim — kernel-level O_NOFOLLOW check, not bypassable via stat.
 
 Safety: nix hashing/NAR serialization ignores xattrs; ~500 MB of tainted
 store paths already work fine. These attrs are sandbox metadata, not content.

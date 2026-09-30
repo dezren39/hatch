@@ -13,9 +13,13 @@
 - [x] D: omnibin as flake input with follows — `b2af047` — problem: dispatcher used github: URL + floating nixpkgs caused 46 source builds; solution: ~/tools/dispatcher/omnibin/flake.nix (omnibin input @459dcff6, nixpkgs follows theirs @4975466d32), dispatcher uses local flake; also fixed latent `nix store realise` → `nix build --no-link` bug
 - [x] Pushed `b2af047` to origin/main (verified on remote)
 
-## 1. Real store — is it the right way? (judgment: yes, via nix's `real` setting)
-- [ ] Test: `allow-symlinked-store = true` + `real = /home/hatch/nix-persist`; drop LD_PRELOAD shim from nix invocations; verify `nix eval`, a real build, dispatcher resolution, `nix store gc`, recycle path via init.sh
-- [ ] If verified: shim becomes legacy fallback; docs updated. If not: keep shim, record why (`file:line`)
+## 1. Real store — DONE 2026-09-30 (refined: no `real` setting in 2.35.2; shim SLIMMED, not dropped)
+- [x] `real` store-dir setting does NOT exist in nix 2.35.2 ("unknown setting 'real'") — phase-1 research claim corrected; no nix.conf change needed (allow-symlinked-store=true + build-users-group=nixbld already ensured by nix-ensure.sh:38-42, recycle path covered)
+- [x] Slimmed taint-shim: full symlink-bit spoofing REMOVED, replaced with mode mask (0777→0755) on /nix; xattr/chown handling kept — tools/taint-shim/taint_shim.c (rebuilt .so; README.md updated)
+- [x] Verified on 2.35.2 with slim shim: `nix eval` ✓; genuine local build as nixbld1 (uid 999) ✓; dispatcher resolution ✓; `nix store gc` (1250 paths, 1.1 GiB freed) ✓; `nix store add-file` ✓; `nix profile list` ✓; `nix flake metadata` + `flake update` ✓
+- [x] Why the shim can't go entirely: (1) sandbox denies removexattr on user.hatch_tainted* even for root → EPERM registering .drv without xattr handling; (2) build sandbox checkNotWorldWritable (nix 2.35.2 derivation-builder.cc:356, called at :389 for build-user builds) rejects S_IWOTH ancestors → needs the mode mask
+- [x] Pre-existing limitation (identical under old full shim — NOT a regression): fresh tarball-flake fetch fails "(or its ancestor) is a symlink" — kernel-level O_NOFOLLOW in openFileEnsureBeneathNoSymlinks, not bypassable via stat
+- [x] Docs updated: TOOLS.md, MEMORY.md, tools/taint-shim/README.md, taint_shim.c header note
 
 ## 2. developing-today/code — NixOS config review (READ-ONLY on their repo)
 - [x] Clone `developing-today/code` (Drew typed "develioing-today" — find the real name) — research 2026-09-30: real repo is developing-today/code, cloned read-only to /tmp/dt-code

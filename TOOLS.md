@@ -24,11 +24,17 @@ worth recording.
   ~16ms hits); loud failure (exit 127) on inexact version, never substitutes.
   Refresh the flake input only via `~/tools/omnibin-refresh.sh`.
 - Nix 2.35.2 single-user (`--no-daemon`): `/nix` is a SYMLINK to
-  `/home/hatch/nix-persist` (persistent btrfs). nix normally refuses a symlinked
-  /nix, but taint-shim hides the symlink bit via lstat/stat interposition
-  (also masks mode 0777→0755; `allow-symlinked-store=true` alone is NOT
-  sufficient — tested 2026-09-30). No copy, no per-exec mount — the symlink
-  survives recycles and is visible to every exec. `~/tools/nix-ensure.sh`
+  `/home/hatch/nix-persist` (persistent btrfs). `allow-symlinked-store = true`
+  in nix.conf covers nix's LocalStore guard; taint-shim handles the two
+  remaining sandbox quirks: hides taint xattrs (sandbox denies removexattr
+  even for root — local builds fail with EPERM without it) and masks the
+  /nix symlink mode 0777→0755 (nix 2.35.2's build-sandbox
+  `checkNotWorldWritable` rejects S_IWOTH ancestors when building as nixbld).
+  The symlink bit itself is reported truthfully since phase 2 (2026-09-30);
+  the old full symlink spoofing was removed. The `real` store-dir setting
+  from the phase-1 research does not exist in nix 2.35.2. No copy, no
+  per-exec mount — the symlink survives recycles and is visible to every
+  exec. `~/tools/nix-ensure.sh`
   (wired into `~/tools/init.sh`) is idempotent: populates the persistent dir
   from tarball if unhealthy, ensures the symlink, verifies `nix eval`.
   Binary at `/nix/var/nix/profiles/per-user/root/profile/bin/nix` (user
@@ -50,8 +56,8 @@ worth recording.
     the live tree with --hard-dereference).
   - ALWAYS run nix with `LD_PRELOAD=~/tools/taint-shim/taint_shim.so`.
     The shim: hides taint xattrs (sandbox denies removexattr), elides nix's
-    redundant startup chown (sandbox denies chown even for root), and hides
-    the /nix symlink from nix's store guard via lstat/stat interposition.
+    redundant startup chown (sandbox denies chown even for root), and masks
+    the /nix symlink mode 0777→0755 for the build-sandbox ancestor check.
     nix-ensure.sh exports this.
   - /etc/nix/nix.conf (overlay, rewritten each boot by nix-ensure.sh):
     `experimental-features = nix-command flakes`,
