@@ -8,6 +8,10 @@ worth recording.
 
 ## Toolchains (installed 2026-09-29, under ~/tools — persistent)
 - Go: `~/tools/go/bin/go` (1.25.1). Add to PATH as needed.
+- Go builds/tests: /tmp is a 512M tmpfs — linking a Go binary fails with
+  "mapping output file failed: no space left on device". Run with
+  `TMPDIR=/home/hatch/tmp` (btrfs, 95G free; mkdir it first). Hit 2026-09-30
+  running mcpx's e2e tests, which `go build` the binary into a temp dir.
 - Rust: `CARGO_HOME=~/tools/cargo RUSTUP_HOME=~/tools/rustup`; cargo at `~/tools/cargo/bin/cargo`.
 - `/bin/bash` is a wrapper (installed by `~/tools/install-bash-wrapper.sh`, run
   on boot via init.sh) that sets `BASH_ENV=~/tools/shell-env.sh` and
