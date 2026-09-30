@@ -52,10 +52,11 @@ regardless of caps. So "have CAP_MKNOD" ≠ "can mknod".
 
 1. **Deletion depends on the *directory's* write bit, not file mode.**
    A read-only (444) file inside a writable directory deletes fine even as
-   root — but *nothing* inside a read-only (555) directory can be deleted by
-   anyone, even root. Nix store dirs are 555, which is what blocks GC there.
-   Only directories need `chmod u+w`; files can stay read-only.
-   (Confirmed by test 2026-09-30.)
+   root — but *manual* `rm` of anything inside a read-only (555) directory
+   fails for anyone, even root. Nix store dirs are 555.
+   **Exception:** `nix store gc` works fine (tested 2026-09-30, freed ~1 GB:
+   1.4G → 394M). Nix chmods store paths writable before deleting them —
+   the 555 block only affects manual deletion, not nix's own GC.
 
 2. **New files get `user.hatch_tainted*` xattrs** (harmless, but the nix
    installer chokes removing them — hence the manual profile build in
