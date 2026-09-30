@@ -12,6 +12,12 @@ worth recording.
   "mapping output file failed: no space left on device". Run with
   `TMPDIR=/home/hatch/tmp` (btrfs, 95G free; mkdir it first). Hit 2026-09-30
   running mcpx's e2e tests, which `go build` the binary into a temp dir.
+- Go `testing.TempDir` reads `GOTMPDIR`, NOT `TMPDIR`, and caches one parent
+  dir per test (first call wins; later env changes are ignored). Redirecting
+  TMPDIR inside a test to keep temp files under a fake $HOME silently does
+  nothing — set GOTMPDIR before the first t.TempDir call. Hit 2026-09-30
+  fixing mcpx's daemon test isolation (the config walk passes through the
+  real $HOME when the temp tree sits under it).
 - Rust: `CARGO_HOME=~/tools/cargo RUSTUP_HOME=~/tools/rustup`; cargo at `~/tools/cargo/bin/cargo`.
 - `/bin/bash` is a wrapper (installed by `~/tools/install-bash-wrapper.sh`, run
   on boot via init.sh) that sets `BASH_ENV=~/tools/shell-env.sh` and
