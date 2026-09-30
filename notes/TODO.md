@@ -40,6 +40,7 @@
 - [ ] Configure mcpx for this host (config file at ~/.config/mcpx/config.json) — blocked on Drew: "lootbin" = lootbox?
 - [x] Write the feedback file; push to dezren39/nix (branch/PR) — done 2026-09-30 as two PRs: #194 (pure-Go build), #195 (systemd user unit + README)
 - [ ] Anything broken → GitHub issue → fix → PR; chain PRs indefinitely ahead of main
+  - 2026-09-30 ~07:40: issue #196 + PR #197 (branch mcpx-searchpath-dedupe, commit 70f00ea): `SearchPathFrom` duplicated the user config when cwd at/under $HOME (walk passes through $HOME, then the home fallback adds it again) → `FingerprintConfig` hashed `[cfg, cfg]` vs `[cfg]` → CLI dialed `daemon-55c0fe582254.sock` while the systemd daemon (cwd=/) listened on `daemon-dc56d4a7680a.sock` → `mcpx status` said "not running" for a live daemon (strace-verified). Fix: dedupe keeping first occurrence (nearest-first precedence unchanged) + regression test `TestSearchPathDedupesUserConfig`. Drive-by noted in issue: `TestSourcesAreRecordedNearestFirst` doesn't isolate $HOME (pre-existing env failure).
 - Build saga RESOLVED (2026-09-30 ~07:15): mcpx built + installed + daemon ACTIVE.
   - Attempt 1 (env.CGO_ENABLED via overrideAttrs): FAILED — nixpkgs' module.nix computes `env.CGO_ENABLED = args.env.CGO_ENABLED or go.CGO_ENABLED` from its own args, clobbering the override. Lesson: export in a hook instead.
   - Attempt 2 (export CGO_ENABLED=0 in preBuild): Go build went pure-Go and SUCCEEDED — but installPhase still failed. `set -x` trace proved the linker ran inside postInstall's `wrapProgram` → `makeCWrapper` (compiles a tiny C wrapper with the cc-wrapper).
@@ -50,11 +51,11 @@
 
 ## 4. opencode + mcpx daemon
 - [x] Install opencode; smoke-test free models — 2026-09-30: opencode 1.18.31 installed via `nix profile install nixpkgs#opencode` (binary from cache). Free models (`ling-3.0-flash-fin-free`, etc.) REQUIRE interactive `opencode auth login` (browser OAuth) — NOT attempted; 0 credentials. REMIND DREW to run it.
-- [x] Install mcpx opencode plugin; verify opencode can use mcpx tools — 2026-09-30: plugin from `pkgs/mcpx/plugin/opencode/` (phase-1 path `plugin/opencode/` was wrong) installed per README; `opencode debug config` shows the plugin, `opencode debug skill` lists all 4 mcpx skills; bun test 21 pass / 0 fail (degrades gracefully without mcpx daemon). Note: first-run `opencode debug` hangs on TTY prompt — use `< /dev/null`.
+- [x] Install mcpx opencode plugin; verify opencode can use mcpx tools — 2026-09-30: plugin from `pkgs/mcpx/plugin/opencode/` (phase-1 path `plugin/opencode/` was wrong) installed per README; `opencode debug config` shows the plugin, `opencode debug skill` lists all 4 mcpx skills; bun test 21 pass / 0 fail (degrades gracefully without mcpx daemon). Note: first-run `opencode debug` hangs on TTY prompt — use `< /dev/null`. Re-verified 2026-09-30 ~07:26 against the LIVE daemon: plugin discovery scans `daemon-*.json` in the state dir so it is NOT affected by the #196 key bug; `mcpx daemons` shows PID 69673 RUNNING (CLI↔daemon connectivity confirmed).
 - [x] mcpx systemd service file written: ~/tools/mcpx.service (canonical source) — runs as root with HOME=/home/hatch, /usr/local/bin/mcpx daemon, restart-on-failure
 - [x] init.sh hook: ~/tools/install-mcpx-service.sh (copies unit to /etc, daemon-reload, enable --now; skips gracefully if mcpx not installed) — wired into init.sh via run_step "mcpx-service" after nix-profile-sync
 - [x] Verify: run hook → `systemctl is-active mcpx` must be active — 2026-09-30 ~07:15: `install-mcpx-service.sh` ran clean, service active, daemon listening on unix socket + http://127.0.0.1:41001 (0 servers — config still needs Drew's lootbin answer)
-- [x] Push the service file back to dezren39/nix; fix if broken — done 2026-09-30: PR #195 (branch mcpx-daemon-unit, commit 70b3f78): pkgs/mcpx/daemon/mcpx.service (user unit template) + README.md install/verify/log docs. Note: contributed as a generic --user unit; this host's root-run system unit (~/tools/mcpx.service) stays here since it's environment-specific. — branch `add-mcpx-systemd-unit` PUSHED 2026-09-30, but GitHub API is down (GraphQL + REST 502s); PR creation pending retry
+- [x] Push the service file back to dezren39/nix; fix if broken — done 2026-09-30: PR #195 (branch mcpx-daemon-unit, commit 70b3f78): pkgs/mcpx/daemon/mcpx.service (user unit template) + README.md install/verify/log docs. Note: contributed as a generic --user unit; this host's root-run system unit (~/tools/mcpx.service) stays here since it's environment-specific. — PR #195 now OPEN (created 2026-09-30 ~07:20 CDT once the GitHub API recovered from the 502 outage); #194 and #195 both open, no review comments yet (checked 07:26)
 
 ## 5. Docs & demo
 - [x] notes/architecture/dispatcher-vs-omnibin-run.md — how our dispatcher differs from omnibin's `nix run` (file written 2026-09-30)
@@ -62,7 +63,7 @@
 
 ## 6. Routine (standing)
 - [x] 15-min check cron active (`nix-mcpx-15min-check`, 2026-09-30) — carries these rules; drives work, pushes, fixes docs
-- [ ] Cron verified firing and updating this file
+- [x] Cron verified firing and updating this file — 2026-09-30 ~07:26 run: firing on schedule, daemon healthy (`systemctl` active, `mcpx daemons` RUNNING, HTTP 200 on /v1/health), PRs #194/#195 confirmed OPEN, filed issue #196 + PR #197 for the searchpath/daemon-key bug
 - Phase-1 status (2026-09-30 ~06:45): COMPLETE. Research done (NixOS review → nixos-config-review.md; mcpx/lootbox map → mcpx-opencode-plan.md). Drafts: mcpx systemd unit + init.sh hook + opencode plan (in mcpx-opencode-plan.md). Dispatcher doc written. B/C/D landed as b2af047 (observed via TOOLS.md + git log). All phase-1 files committed/pushed. Awaiting: parent's explicit phase-2 signal; Drew's lootbin-vs-lootbox answer.
 - 06:45 run: finished the interrupted flake import (`nix flake lock`, mcpx resolves via dry-run); mcpx.service absent from systemd as expected (phase 2 not started); demo script written to goal files/; tree committed + pushed.
 
