@@ -54,7 +54,7 @@
 - [x] mcpx systemd service file written: ~/tools/mcpx.service (canonical source) — runs as root with HOME=/home/hatch, /usr/local/bin/mcpx daemon, restart-on-failure
 - [x] init.sh hook: ~/tools/install-mcpx-service.sh (copies unit to /etc, daemon-reload, enable --now; skips gracefully if mcpx not installed) — wired into init.sh via run_step "mcpx-service" after nix-profile-sync
 - [x] Verify: run hook → `systemctl is-active mcpx` must be active — 2026-09-30 ~07:15: `install-mcpx-service.sh` ran clean, service active, daemon listening on unix socket + http://127.0.0.1:41001 (0 servers — config still needs Drew's lootbin answer)
-- [ ] Push the service file back to dezren39/nix; fix if broken
+- [ ] Push the service file back to dezren39/nix; fix if broken — branch `add-mcpx-systemd-unit` PUSHED 2026-09-30, but GitHub API is down (GraphQL + REST 502s); PR creation pending retry
 
 ## 5. Docs & demo
 - [x] notes/architecture/dispatcher-vs-omnibin-run.md — how our dispatcher differs from omnibin's `nix run` (file written 2026-09-30)
