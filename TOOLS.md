@@ -88,8 +88,12 @@ worth recording.
     shell with no per-shell setup, and self-heals if the profile binary goes
     missing. Created by `~/tools/install-nix-wrapper.sh`, run on boot via
     init.sh (overlay wipes /usr/local/bin; atomic temp+rename install).
-    After `nix profile` install/remove/upgrade/rollback it auto-runs
-    nix-profile-sync.sh.
+    After `nix profile` add/install/remove/upgrade/rollback it auto-runs
+    nix-profile-sync.sh. (The hook's case list MUST include `add` — the modern
+    subcommand name; `install` alone is not enough. Fixed 2026-09-30: the list
+    was install|remove|upgrade|rollback, so every `nix profile add` silently
+    skipped the sync; after a recycle /usr/local/bin/mcpx stayed missing and
+    the mcpx unit failed 203/EXEC. Fix lives in install-nix-wrapper.sh.)
   - `~/tools/nix-repair.sh` — on-demand repair triggered by the shell sentinel
     in `shell-env.sh` when `/nix`, the profile nix, or `/usr/local/bin/nix` look
     broken. `flock`-guarded, `NIX_REPAIR_GUARD` recursion guard (children get
@@ -105,6 +109,18 @@ worth recording.
     (e.g. `tools/dispatcher/omnibin`), NOT the package name; `remove mcpx`
     matches nothing and errors, leaving the stale add a no-op.
     (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #269; again for #271.)
+  - `nix profile` default profile: uses `~/.nix-profile` when it exists; when it
+    does NOT exist, nix operates on /nix/var/nix/profiles/default (→
+    per-user/root/profile) and creates `~/.nix-profile` as a symlink to it.
+    (Observed 2026-09-30.) So there is effectively ONE profile; nix-ensure.sh
+    passes `--profile` explicitly for its self-heal and is unaffected.
+  - Dangling `~/.nix-profile` does NOT error: if it points to a nonexistent
+    `-N-link`, `nix profile add` chains another `-1-link` onto the dangling
+    name (observed `.nix-profile-1-link-1-link`) instead of failing or
+    repairing. If you see chained `-1-link`s, delete the dangling symlinks and
+    re-add for a clean profile. (How a generation target vanished from the
+    store on 2026-09-30 is still unexplained — no gc runs in our toolchain —
+    so treat a dangling profile as a real alert, not hygiene.)
   - `~/tools/nix-profile-sync.sh` symlinks `~/.nix-profile/bin/*` into
     `/usr/local/bin/` so `nix profile install`ed apps (e.g. cowsay) are on the
     PATH in every shell with no wrappers per program. Skips `nix*` (the

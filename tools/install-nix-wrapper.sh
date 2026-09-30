@@ -8,8 +8,12 @@
 # profile to maintain. If the profile's nix is missing/not executable, the
 # wrapper runs nix-ensure.sh — which self-heals the profile from any nix
 # binary left in the store — and retries once; if still broken it fails loud.
-# After `nix profile install/remove/upgrade/rollback`, it re-runs
+# After `nix profile add/install/remove/upgrade/rollback`, it re-runs
 # nix-profile-sync.sh so new binaries land on the PATH automatically.
+# NOTE: `add` is the modern subcommand name (`install` is its deprecated
+# alias) — both must be in the wrapper's hook list, or `nix profile add`
+# silently skips the sync (hit 2026-09-30: post-recycle `nix profile add .#mcpx`
+# left /usr/local/bin/mcpx missing and the mcpx unit failed 203/EXEC).
 # Idempotent. Run on boot via init.sh (overlay wipes /usr/local/bin).
 set -u
 mkdir -p /usr/local/bin
@@ -38,7 +42,7 @@ fi
 code=$?
 if [ "${1:-}" = "profile" ]; then
   case "${2:-}" in
-    install|remove|upgrade|rollback)
+    add|install|remove|upgrade|rollback)
       bash /home/hatch/tools/nix-profile-sync.sh >/dev/null 2>&1 || true
       ;;
   esac
