@@ -94,6 +94,12 @@ worth recording.
     `BASH_ENV` unset, run via `/bin/bash.real`), verifies actual state
     post-repair, never deletes nix-persist on failure. Full recycle still via
     init.sh + `sandbox-boot-init` cron.
+  - `nix profile add .#attr` of a git+file flake is a NO-OP when the flake URL
+    text is unchanged: the profile records the flake URL (e.g.
+    `git+file:///home/hatch?dir=tools/dispatcher/omnibin`) with no rev, so a
+    dirty-tree change like a lock bump doesn't register — `nix profile list`
+    still shows the old store path. Fix: `nix profile remove <element-name>`
+    first, then add. (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #269.)
   - `~/tools/nix-profile-sync.sh` symlinks `~/.nix-profile/bin/*` into
     `/usr/local/bin/` so `nix profile install`ed apps (e.g. cowsay) are on the
     PATH in every shell with no wrappers per program. Skips `nix*` (the
