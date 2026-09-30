@@ -36,7 +36,12 @@ for line in \
   "extra-trusted-public-keys = omnibin.cachix.org-1:HWeLv8+LfqLqLDOoQJmvmW7m0ug1Fne/DYaxgdECHgw=" \
   "accept-flake-config = true" \
   "allow-symlinked-store = true" \
-  "build-users-group = nixbld"; do
+  "build-users-group = nixbld" \
+  "keep-outputs = true" \
+  "keep-derivations = true" \
+  "fallback = true" \
+  "http-connections = 50" \
+  "allow-dirty = true"; do
   key="${line%% = *}"
   grep -q "^[[:space:]]*${key}[[:space:]]*=" /etc/nix/nix.conf 2>/dev/null \
     || echo "$line" >> /etc/nix/nix.conf

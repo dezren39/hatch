@@ -82,6 +82,7 @@ run_step() { # name, then command + args
 run_step "nix-ensure" bash /home/hatch/tools/nix-ensure.sh
 run_step "nix-wrapper" bash /home/hatch/tools/install-nix-wrapper.sh
 run_step "nix-profile-sync" bash /home/hatch/tools/nix-profile-sync.sh
+run_step "mcpx-service" bash /home/hatch/tools/install-mcpx-service.sh
 run_step "bash-wrapper" bash /home/hatch/tools/install-bash-wrapper.sh
 run_step "go-check" bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
 run_step "rust-check" bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'

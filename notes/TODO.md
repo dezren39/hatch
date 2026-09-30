@@ -24,20 +24,28 @@
 ## 2. developing-today/code — NixOS config review (READ-ONLY on their repo)
 - [x] Clone `developing-today/code` (Drew typed "develioing-today" — find the real name) — research 2026-09-30: real repo is developing-today/code, cloned read-only to /tmp/dt-code
 - [x] Read the config in full depth; list candidate settings/programs/features worth stealing (do NOT copy the whole structure) — research 2026-09-30: notes/architecture/nixos-config-review.md — top steals: nixConfig block → our nix.conf (ca-derivations, fetch-closure), nix-output-monitor + nh + linters, standalone home-manager, git-absorb/atuin/kondo/topgrade, timeout-guarded oneshot + tmpfiles patterns
-- [ ] Incorporate the good bits; record each with why — notes/architecture/nixos-config-review.md (phase 2)
+- [x] Incorporate the good bits — done 2026-09-30, via nix-ensure.sh → /etc/nix/nix.conf (applied, verified live with `nix show-config`):
+  - `keep-outputs = true` / `keep-derivations = true` — why: protects dispatcher-resolved binaries and .drvs from `nix store gc` (we gc'd 1.1 GiB today; these keep the working set alive)
+  - `fallback = true` — why: if a binary fetch fails, build from source instead of erroring (resilience for the dispatcher)
+  - `http-connections = 50` — why: Drew uses 100; 50 is safer for our bandwidth while still parallelizing fetches
+  - `allow-dirty = true` — why: our wrapper flake lives in a dirty git tree; dirty flakes otherwise refuse to evaluate
+  - NOT taken (recorded why): `ca-derivations`/`fetch-closure` — experimental, changes derivation hashing; risk to dispatcher/omnibin flows, revisit later; `auto-optimise-store` — Drew deliberately keeps false, we keep default; `use-xdg-base-directories` — would move ~/.nix-profile etc., our tooling assumes current paths
+- [ ] Tools from the review (nix-output-monitor, nh, nixfmt, statix, deadnix, nvd) — install via `nix profile` (pending; avoiding profile-lock contention with mcpx/opencode installs)
 
 ## 3. dezren39/nix + mcpx
 - [x] Clone; map the flake: mcpx package/module, how to import it as a flake input — research 2026-09-30 (/tmp/dn-nix): `inputs.dezren39-nix.url="github:dezren39/nix"` → `packages.x86_64-linux.mcpx` (flake.nix:385,424; also apps at :494); NO nixosModules output — package only, no module to import
 - [x] Understand the lootbin host's MCP config — write the parity target list — research 2026-09-30: "lootbin" appears NOWHERE in dezren39/nix, dezren39/hatch, or GH code search for dezren39; only MCP host is **lootbox** (Drew's Mac, launchd agent configuration.nix:718-755, servers in lootbox.config.json). mcpx = Go daemon (unix socket + HTTP, JSON config, ${VAR} secrets, auto-spawn) — full findings in notes/architecture/mcpx-opencode-plan.md
 - [ ] Confirm with Drew: "lootbin" = lootbox? Parity = mcpx-with-similar-servers, or also port lootbox-the-app?
-- [ ] Import mcpx into our flake from dezren39/nix; configure it here
+- [ ] Import mcpx into our flake from dezren39/nix; configure it here — IN PROGRESS 2026-09-30: delegate adding `dezren39-nix` input to ~/tools/dispatcher/omnibin/flake.nix (recursiveUpdate merge) + `nix profile install`; minimal config at ~/.config/mcpx/config.json (empty mcpServers, valid JSON) pending Drew's lootbin answer
 - [ ] Write the feedback file; push to dezren39/nix (branch/PR)
 - [ ] Anything broken → GitHub issue → fix → PR; chain PRs indefinitely ahead of main
 
 ## 4. opencode + mcpx daemon
-- [ ] Install opencode; smoke-test free models (if interactive auth needed: record + move on, REMIND DREW)
-- [ ] Install mcpx opencode plugin; verify opencode can use mcpx tools
-- [ ] mcpx daemon as systemd service; launched from init (init.sh writes unit + `daemon-reload` + `enable --now` every boot — /etc is ephemeral)
+- [ ] Install opencode; smoke-test free models (if interactive auth needed: record + move on, REMIND DREW) — IN PROGRESS 2026-09-30: delegate running `nix profile install nixpkgs#opencode`
+- [ ] Install mcpx opencode plugin; verify opencode can use mcpx tools — IN PROGRESS 2026-09-30: delegate copying plugin from dezren39/nix to ~/.config/opencode/
+- [x] mcpx systemd service file written: ~/tools/mcpx.service (canonical source) — runs as root with HOME=/home/hatch, /usr/local/bin/mcpx daemon, restart-on-failure
+- [x] init.sh hook: ~/tools/install-mcpx-service.sh (copies unit to /etc, daemon-reload, enable --now; skips gracefully if mcpx not installed) — wired into init.sh via run_step "mcpx-service" after nix-profile-sync
+- [ ] Verify: run hook → `systemctl is-active mcpx` must be active (blocked on mcpx install)
 - [ ] Push the service file back to dezren39/nix; fix if broken
 
 ## 5. Docs & demo
