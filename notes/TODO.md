@@ -85,3 +85,4 @@
 ## Awareness (not this program's work — keep an eye, don't own)
 - WI annual report DEVELOPING.TODAY LLC due TODAY 2026-09-30 — filing retry cron 07:12 CDT; needs Drew if blocked
 - Marketplace deal-hunt sweeps every 4h — silent unless a real deal appears
+- 10:41 run: rebased PR #221 onto 0b94eec (#245), `go test ./internal/config/` green; full suite backgrounded and aborted — coverage gap; daemon healthy; still gated on Drew (lootbin answer, opencode auth) or dezren39 (#221 review).
