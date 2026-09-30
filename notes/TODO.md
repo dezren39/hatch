@@ -36,7 +36,8 @@
 - [x] Clone; map the flake: mcpx package/module, how to import it as a flake input — research 2026-09-30 (/tmp/dn-nix): `inputs.dezren39-nix.url="github:dezren39/nix"` → `packages.x86_64-linux.mcpx` (flake.nix:385,424; also apps at :494); NO nixosModules output — package only, no module to import
 - [x] Understand the lootbin host's MCP config — write the parity target list — research 2026-09-30: "lootbin" appears NOWHERE in dezren39/nix, dezren39/hatch, or GH code search for dezren39; only MCP host is **lootbox** (Drew's Mac, launchd agent configuration.nix:718-755, servers in lootbox.config.json). mcpx = Go daemon (unix socket + HTTP, JSON config, ${VAR} secrets, auto-spawn) — full findings in notes/architecture/mcpx-opencode-plan.md
 - [ ] Confirm with Drew: "lootbin" = lootbox? Parity = mcpx-with-similar-servers, or also port lootbox-the-app?
-- [ ] Import mcpx into our flake from dezren39/nix; configure it here — IN PROGRESS 2026-09-30: delegate adding `dezren39-nix` input to ~/tools/dispatcher/omnibin/flake.nix (recursiveUpdate merge) + `nix profile install`; minimal config at ~/.config/mcpx/config.json (empty mcpServers, valid JSON) pending Drew's lootbin answer
+- [x] Import mcpx into our flake: `dezren39-nix` input added to tools/dispatcher/omnibin/flake.nix + lock updated — `nix build --dry-run ...#mcpx` resolves the package closure (2026-09-30 ~06:45) — problem: flake.nix was edited but never locked, so every dispatcher miss triggered a slow lock update; solution: ran `nix flake lock`, verified miss path + mcpx resolution. NOTE: `github:`-type tarball fetch works fine — the "(or its ancestor) is a symlink" limitation does NOT hit github inputs (only fresh generic-tarball fetches)
+- [ ] Configure mcpx for this host (config file at ~/.config/mcpx/config.json) — blocked on Drew: "lootbin" = lootbox?
 - [ ] Write the feedback file; push to dezren39/nix (branch/PR)
 - [ ] Anything broken → GitHub issue → fix → PR; chain PRs indefinitely ahead of main
 
@@ -49,13 +50,14 @@
 - [ ] Push the service file back to dezren39/nix; fix if broken
 
 ## 5. Docs & demo
-- [x] notes/architecture/dispatcher-vs-omnibin-run.md — how our dispatcher differs from omnibin's `nix run` (file written 2026-09-30; UNPUSHED — B/C/D coordinator has uncommitted tree changes, will push after their tree is clean/committed)
-- [ ] Demo script for Drew's check-in (4+ hrs): the exact commands to show it all working
+- [x] notes/architecture/dispatcher-vs-omnibin-run.md — how our dispatcher differs from omnibin's `nix run` (file written 2026-09-30)
+- [x] Demo script for Drew's check-in: workspace/goals/nix-real-store-mcpx-opencode-setup/files/demo-script.md (written 2026-09-30 ~06:45; honest about current state — install/service pending)
 
 ## 6. Routine (standing)
 - [x] 15-min check cron active (`nix-mcpx-15min-check`, 2026-09-30) — carries these rules; drives work, pushes, fixes docs
 - [ ] Cron verified firing and updating this file
 - Phase-1 status (2026-09-30 ~06:45): COMPLETE. Research done (NixOS review → nixos-config-review.md; mcpx/lootbox map → mcpx-opencode-plan.md). Drafts: mcpx systemd unit + init.sh hook + opencode plan (in mcpx-opencode-plan.md). Dispatcher doc written. B/C/D landed as b2af047 (observed via TOOLS.md + git log). All phase-1 files committed/pushed. Awaiting: parent's explicit phase-2 signal; Drew's lootbin-vs-lootbox answer.
+- 06:45 run: finished the interrupted flake import (`nix flake lock`, mcpx resolves via dry-run); mcpx.service absent from systemd as expected (phase 2 not started); demo script written to goal files/; tree committed + pushed.
 
 ## Awareness (not this program's work — keep an eye, don't own)
 - WI annual report DEVELOPING.TODAY LLC due TODAY 2026-09-30 — filing retry cron 07:12 CDT; needs Drew if blocked
