@@ -69,3 +69,6 @@ go/
 
 # === Platform docs (Meta maintains them, but we track them to see changes) ===
 # (docs/ is tracked)
+
+# === Generated data (regenerable, too big for git) ===
+notes/disk-listings/
