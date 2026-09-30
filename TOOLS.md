@@ -62,7 +62,9 @@ worth recording.
     reference that gid; users nixbld1..10 uids 999..1008), and list them as
     supplementary members (`usermod -aG`) — nix errors "has no members" if
     they only have it as primary group. Now handled in nix-ensure.sh
-    (`ensure_nixbld_users`), so recycles self-heal.
+    (`ensure_nixbld_users`), so recycles self-heal. VERIFIED 2026-09-30 ~14:26:
+    post-recycle boot auto-recreated nixbld group+users and a genuine
+    nixbld-user local build succeeded (mcpx drv kn8xa8ri6…).
   - `~/tools/nix-ensure.sh` — fast (~0.2s) when healthy. NEVER auto-deletes or
     quarantines the persistent dir on failure (fail loud); NEVER extracts over
     a non-empty tree (tar hardlinks aren't idempotent — moves aside as
