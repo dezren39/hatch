@@ -85,6 +85,14 @@ worth recording.
     it adds the newest store nix with a real (non-symlink) bin/nix — never
     removes before adding (`profile remove` + `profile add` of the same path
     silently skips linking bin/nix; 2.34.8 self-add has the same quirk).
+  - Symlinked-store C-build gotcha (hit building mcpx 2026-09-30): gcc
+    canonicalizes /nix through the symlink → cc-wrapper purity check fails
+    ("impure path ... used in link"). Escape hatch per derivation:
+    `NIX_ENFORCE_PURITY=0` (safe here — the "impure" path IS the store). For Go
+    derivations, prefer `env.CGO_ENABLED = "0"` (nixpkgs honors args.env over
+    go.CGO_ENABLED) so no C toolchain is needed at all; makeCWrapper's
+    postInstall wrapProgram still compiles a C wrapper, which is where the
+    purity flag becomes necessary. Upstreamed to dezren39/nix as PR #194.
 
 ## Sandbox filesystem model (learned 2026-09-29, corrected)
 - Kernel persists across execs, but the sandbox DOES get recycled (new boot_id,

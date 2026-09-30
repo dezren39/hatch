@@ -38,7 +38,7 @@
 - [ ] Confirm with Drew: "lootbin" = lootbox? Parity = mcpx-with-similar-servers, or also port lootbox-the-app?
 - [x] Import mcpx into our flake: `dezren39-nix` input added to tools/dispatcher/omnibin/flake.nix + lock updated — `nix build --dry-run ...#mcpx` resolves the package closure (2026-09-30 ~06:45) — problem: flake.nix was edited but never locked, so every dispatcher miss triggered a slow lock update; solution: ran `nix flake lock`, verified miss path + mcpx resolution. NOTE: `github:`-type tarball fetch works fine — the "(or its ancestor) is a symlink" limitation does NOT hit github inputs (only fresh generic-tarball fetches)
 - [ ] Configure mcpx for this host (config file at ~/.config/mcpx/config.json) — blocked on Drew: "lootbin" = lootbox?
-- [ ] Write the feedback file; push to dezren39/nix (branch/PR)
+- [x] Write the feedback file; push to dezren39/nix (branch/PR) — done 2026-09-30 as two PRs: #194 (pure-Go build), #195 (systemd user unit + README)
 - [ ] Anything broken → GitHub issue → fix → PR; chain PRs indefinitely ahead of main
 - Build saga RESOLVED (2026-09-30 ~07:15): mcpx built + installed + daemon ACTIVE.
   - Attempt 1 (env.CGO_ENABLED via overrideAttrs): FAILED — nixpkgs' module.nix computes `env.CGO_ENABLED = args.env.CGO_ENABLED or go.CGO_ENABLED` from its own args, clobbering the override. Lesson: export in a hook instead.
@@ -46,7 +46,7 @@
   - Root cause: gcc canonicalizes /nix through the symlink → plugin path /home/hatch/nix-persist/store/... trips the ld-wrapper purity check ("impure path ... liblto_plugin.so used in link").
   - Fix (tools/dispatcher/omnibin/flake.nix): preBuild exports CGO_ENABLED=0 AND NIX_ENFORCE_PURITY=0 (stdenv sets the latter to 1 by default; the "impure" path IS the store, so disabling for this one derivation is safe). Build ✓, `nix profile install` ✓ (`mcpx 0.1.0`), `systemctl is-active mcpx` → active (listening on unix socket + http://127.0.0.1:41001, 0 servers configured — config still needs Drew's lootbin answer).
   - General gotcha for symlinked stores: ANY derivation that compiles C via the cc-wrapper will hit this; NIX_ENFORCE_PURITY=0 is the escape hatch.
-  - CANDIDATE upstream issue for dezren39/nix: package.nix should set `env.CGO_ENABLED = "0"` itself (its own docs say pure-Go to avoid a C toolchain) — would fix the Go side; the makeCWrapper side is our store layout, not theirs.
+  - Upstream PR #194 (dezren39/nix, branch mcpx-pure-go-build, commit 1c635c1): `env.CGO_ENABLED = "0"` in pkgs/mcpx/package.nix — module.nix honors args.env over go.CGO_ENABLED (verified against nixpkgs go/module.nix:224), so this pins the documented pure-Go design in the derivation itself. Fixes the Go-side half of the saga; makeCWrapper half is our store layout, not theirs.
 
 ## 4. opencode + mcpx daemon
 - [x] Install opencode; smoke-test free models — 2026-09-30: opencode 1.18.31 installed via `nix profile install nixpkgs#opencode` (binary from cache). Free models (`ling-3.0-flash-fin-free`, etc.) REQUIRE interactive `opencode auth login` (browser OAuth) — NOT attempted; 0 credentials. REMIND DREW to run it.
@@ -54,7 +54,7 @@
 - [x] mcpx systemd service file written: ~/tools/mcpx.service (canonical source) — runs as root with HOME=/home/hatch, /usr/local/bin/mcpx daemon, restart-on-failure
 - [x] init.sh hook: ~/tools/install-mcpx-service.sh (copies unit to /etc, daemon-reload, enable --now; skips gracefully if mcpx not installed) — wired into init.sh via run_step "mcpx-service" after nix-profile-sync
 - [x] Verify: run hook → `systemctl is-active mcpx` must be active — 2026-09-30 ~07:15: `install-mcpx-service.sh` ran clean, service active, daemon listening on unix socket + http://127.0.0.1:41001 (0 servers — config still needs Drew's lootbin answer)
-- [ ] Push the service file back to dezren39/nix; fix if broken — branch `add-mcpx-systemd-unit` PUSHED 2026-09-30, but GitHub API is down (GraphQL + REST 502s); PR creation pending retry
+- [x] Push the service file back to dezren39/nix; fix if broken — done 2026-09-30: PR #195 (branch mcpx-daemon-unit, commit 70b3f78): pkgs/mcpx/daemon/mcpx.service (user unit template) + README.md install/verify/log docs. Note: contributed as a generic --user unit; this host's root-run system unit (~/tools/mcpx.service) stays here since it's environment-specific. — branch `add-mcpx-systemd-unit` PUSHED 2026-09-30, but GitHub API is down (GraphQL + REST 502s); PR creation pending retry
 
 ## 5. Docs & demo
 - [x] notes/architecture/dispatcher-vs-omnibin-run.md — how our dispatcher differs from omnibin's `nix run` (file written 2026-09-30)
