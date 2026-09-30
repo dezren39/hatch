@@ -18,10 +18,11 @@ worth recording.
   `cp /bin/bash.real /bin/bash`.
 - `~/tools/dispatcher.sh` — single resolver for `program[@version]`, used by
   both `command_not_found_handle` and stubs in `~/tools/bin/` (on PATH).
-  Pinned omnibin flake (`~/tools/dispatcher/omnibin-pin`); persistent GC roots
+  Pinned omnibin wrapper flake (`~/tools/dispatcher/omnibin/flake.nix`:
+  omnibin as input with `nixpkgs.follows`); persistent GC roots
   (`/nix/var/nix/gcroots/dispatcher/`); disk cache (`~/tools/dispatcher/cache/`,
   ~16ms hits); loud failure (exit 127) on inexact version, never substitutes.
-  Refresh the pin only via `~/tools/omnibin-refresh.sh`.
+  Refresh the flake input only via `~/tools/omnibin-refresh.sh`.
 - Nix 2.35.2 single-user (`--no-daemon`): `/nix` is a SYMLINK to
   `/home/hatch/nix-persist` (persistent btrfs). nix normally refuses a symlinked
   /nix, but taint-shim hides the symlink bit via lstat/stat interposition
@@ -30,10 +31,13 @@ worth recording.
   survives recycles and is visible to every exec. `~/tools/nix-ensure.sh`
   (wired into `~/tools/init.sh`) is idempotent: populates the persistent dir
   from tarball if unhealthy, ensures the symlink, verifies `nix eval`.
-  Binary at `/nix/var/nix/profiles/bootstrap/bin/nix` (pinned bootstrap
-  profile, nix 2.34.8 — user `nix profile` mutations can't take nix away).
-  `build-users-group =` (empty) in nix.conf: builds run as root because
-  nixbld users can't traverse `/home/hatch` (do NOT recreate nixbld).
+  Binary at `/nix/var/nix/profiles/per-user/root/profile/bin/nix` (user
+  profile, nix 2.35.2 — self-heals via nix-ensure.sh if the binary goes
+  missing; the old bootstrap profile was merged away 2026-09-30).
+  `build-users-group = nixbld` in nix.conf: builds run as nixbld1-10 (verified
+  via a local derivation probe). The nixbld group has traverse-only
+  (`--x`) ACLs on `/home/hatch`, `/home/hatch/nix-persist`, and
+  `~/tools/taint-shim` (set via python3 ctypes; `setfacl` not installed).
   - `~/tools/nix-ensure.sh` — fast (~0.2s) when healthy. NEVER auto-deletes or
     quarantines the persistent dir on failure (fail loud); NEVER extracts over
     a non-empty tree (tar hardlinks aren't idempotent — moves aside as
@@ -53,13 +57,14 @@ worth recording.
     `experimental-features = nix-command flakes`,
     omnibin cachix `extra-substituter` + key, `accept-flake-config = true`.
   - `/usr/local/bin/nix` is a wrapper script (on the default PATH) that sets
-    LD_PRELOAD and execs the BOOTSTRAP nix directly — so `nix` works in any
-    shell with no per-shell setup, and `nix profile` mutations can't remove it.
-    Created by `~/tools/install-nix-wrapper.sh`, run on boot via init.sh
-    (overlay wipes /usr/local/bin; atomic temp+rename install). After `nix profile`
-    install/remove/upgrade/rollback it auto-runs nix-profile-sync.sh.
+    LD_PRELOAD and execs the PROFILE nix directly — so `nix` works in any
+    shell with no per-shell setup, and self-heals if the profile binary goes
+    missing. Created by `~/tools/install-nix-wrapper.sh`, run on boot via
+    init.sh (overlay wipes /usr/local/bin; atomic temp+rename install).
+    After `nix profile` install/remove/upgrade/rollback it auto-runs
+    nix-profile-sync.sh.
   - `~/tools/nix-repair.sh` — on-demand repair triggered by the shell sentinel
-    in `shell-env.sh` when `/nix`, the bootstrap, or `/usr/local/bin/nix` look
+    in `shell-env.sh` when `/nix`, the profile nix, or `/usr/local/bin/nix` look
     broken. `flock`-guarded, `NIX_REPAIR_GUARD` recursion guard (children get
     `BASH_ENV` unset, run via `/bin/bash.real`), verifies actual state
     post-repair, never deletes nix-persist on failure. Full recycle still via
@@ -71,7 +76,9 @@ worth recording.
     init.sh; auto-triggered by the nix wrapper after profile mutations.
   - nix-ensure.sh self-heals if the profile loses its nix binary (a flake
     `nix profile install` replaces the installer-provided profile generation):
-    it bootstraps from any nix in the store and reinstalls nixpkgs#nix.
+    it adds the newest store nix with a real (non-symlink) bin/nix — never
+    removes before adding (`profile remove` + `profile add` of the same path
+    silently skips linking bin/nix; 2.34.8 self-add has the same quirk).
 
 ## Sandbox filesystem model (learned 2026-09-29, corrected)
 - Kernel persists across execs, but the sandbox DOES get recycled (new boot_id,

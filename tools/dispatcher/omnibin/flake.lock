@@ -1,0 +1,49 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1790185690,
+        "narHash": "sha256-xJ+X4hBtOcAFGBOe5nAMyMUeF9foJBmIOu3NjBqBycU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "4975466d324710c576dc11ad614684e6bd8cad8e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "4975466d324710c576dc11ad614684e6bd8cad8e",
+        "type": "github"
+      }
+    },
+    "omnibin": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790699441,
+        "narHash": "sha256-+XwwItNxZJTm37pXxvdRkm0hOqMtOLjABmM+Ao/fY4A=",
+        "owner": "fzakaria",
+        "repo": "omnibin",
+        "rev": "459dcff6ee82dd1fb7f3706c4ec5519019635a0a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "fzakaria",
+        "repo": "omnibin",
+        "rev": "459dcff6ee82dd1fb7f3706c4ec5519019635a0a",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "omnibin": "omnibin"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

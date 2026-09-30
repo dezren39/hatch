@@ -3,7 +3,7 @@
 #
 # Triggered by the shell-env.sh sentinel when it detects:
 #   - /nix missing or not a symlink to /home/hatch/nix-persist
-#   - bootstrap nix not executable
+#   - profile nix not executable
 #   - /usr/local/bin/nix wrapper missing
 #
 # (Full recycle is handled by init.sh + the sandbox-boot-init cron;
@@ -23,7 +23,7 @@ set -u
 LOCK=/home/hatch/.nix-repair.lock
 ENSURE=/home/hatch/tools/nix-ensure.sh
 SHIM=/home/hatch/tools/taint-shim/taint_shim.so
-BOOTSTRAP_NIX=/nix/var/nix/profiles/bootstrap/bin/nix
+PROFILE_NIX=/nix/var/nix/profiles/per-user/root/profile/bin/nix
 EXPECTED_NIX_TARGET=/home/hatch/nix-persist
 
 # Recursion guard for this process and all children.
@@ -64,8 +64,8 @@ tgt=$(readlink /nix 2>/dev/null || true)
 if [ "$tgt" != "$EXPECTED_NIX_TARGET" ]; then
   log "VERIFY FAIL: /nix -> '$tgt' (expected $EXPECTED_NIX_TARGET)"; fail=1
 fi
-if ! LD_PRELOAD="$SHIM" "$BOOTSTRAP_NIX" --version >/dev/null 2>&1; then
-  log "VERIFY FAIL: bootstrap nix does not run"; fail=1
+if ! LD_PRELOAD="$SHIM" "$PROFILE_NIX" --version >/dev/null 2>&1; then
+  log "VERIFY FAIL: profile nix does not run"; fail=1
 fi
 if [ ! -x /usr/local/bin/nix ]; then
   log "VERIFY FAIL: /usr/local/bin/nix missing"; fail=1

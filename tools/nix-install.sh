@@ -5,8 +5,8 @@
 # NOTE: the installer's final "install into default profile" step can fail
 # in this sandbox (taint xattrs); the profile links are built manually then.
 set -u
-# NOTE: no nixbld build users — nix.conf sets `build-users-group =` (empty),
-# so builds run as the calling UID (verified 2026-09-30).
+# NOTE: builds run as nixbld users — nix.conf sets `build-users-group = nixbld`
+# (the nixbld group needs traverse ACLs on /home/hatch; see nix-ensure.sh).
 [ -s "$HOME/tools/nix-installer.sh" ] || curl -sSL https://nixos.org/nix/install -o "$HOME/tools/nix-installer.sh"
 rm -rf /nix
 sh "$HOME/tools/nix-installer.sh" --no-daemon --no-channel-add || true
@@ -15,10 +15,10 @@ if [ -z "$NIXPKG" ] || [ ! -x "$NIXPKG/bin/nix" ]; then
   echo "nix-install.sh: installer did not produce a nix package in /nix/store" >&2
   exit 1
 fi
-if [ ! -x /nix/var/nix/profiles/bootstrap/bin/nix ]; then
+# nix itself goes straight into the user profile (single-profile layout).
+if [ ! -x /nix/var/nix/profiles/per-user/root/profile/bin/nix ]; then
   mkdir -p /nix/var/nix/profiles/per-user/root
-  rm -f /nix/var/nix/profiles/bootstrap
-  "$NIXPKG/bin/nix" profile add --profile /nix/var/nix/profiles/bootstrap "$NIXPKG"
+  "$NIXPKG/bin/nix" profile add --profile /nix/var/nix/profiles/per-user/root/profile "$NIXPKG"
 fi
 if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
   mkdir -p /nix/var/nix/profiles/per-user/root

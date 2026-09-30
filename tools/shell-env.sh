@@ -21,13 +21,13 @@ command_not_found_handle() {
 }
 
 # 3. on-demand repair sentinel — cheap stats only, NO nix invocation here.
-# If /nix, the bootstrap, or the nix wrapper look broken, run nix-repair.sh
+# If /nix, the profile nix, or the nix wrapper look broken, run nix-repair.sh
 # synchronously so the current shell session is healed. Guarded by
 # NIX_REPAIR_GUARD so repair children (BASH_ENV is unset there) never
 # re-trigger. Failures are non-fatal to the shell.
 if [ -z "${NIX_REPAIR_GUARD:-}" ]; then
   if [ ! -L /nix ] \
-     || [ ! -x /nix/var/nix/profiles/bootstrap/bin/nix ] \
+     || [ ! -x /nix/var/nix/profiles/per-user/root/profile/bin/nix ] \
      || [ ! -x /usr/local/bin/nix ]; then
     NIX_REPAIR_GUARD=1 /bin/bash.real /home/hatch/tools/nix-repair.sh || true
   fi

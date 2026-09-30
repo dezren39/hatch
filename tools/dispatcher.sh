@@ -8,7 +8,7 @@
 # What it does:
 #   1. Resolves name[@version] via the pinned omnibin index (never the
 #      floating flake).
-#   2. Downloads the closure (nix-store --realise).
+#   2. Downloads the closure (nix build --no-link).
 #   3. Registers a persistent GC root so the binary survives `nix store gc`.
 #   4. Caches the resolution on disk (cache hit = no nix invocation).
 #   5. Creates/refreshes a stub in ~/tools/bin/<name> for subprocess use.
@@ -17,7 +17,7 @@
 # Rules:
 #   - An explicit name@version that has NO exact match in the index is a
 #     LOUD failure (exit 127). We never silently substitute another version.
-#   - The omnibin pin is refreshed ONLY by ~/tools/omnibin-refresh.sh,
+#   - The omnibin flake input is refreshed ONLY by ~/tools/omnibin-refresh.sh,
 #     never on a cache miss.
 set -u
 
@@ -25,8 +25,11 @@ DISPATCHER_DIR=/home/hatch/tools/dispatcher
 CACHE_DIR=$DISPATCHER_DIR/cache
 GCROOT_DIR=/nix/var/nix/gcroots/dispatcher
 STUB_DIR=/home/hatch/tools/bin
-PIN_FILE=$DISPATCHER_DIR/omnibin-pin
-NIXBIN=/nix/var/nix/profiles/bootstrap/bin/nix
+# Pinned omnibin wrapper flake (omnibin as input, nixpkgs follows).
+OMNIBIN_FLAKE=$DISPATCHER_DIR/omnibin
+# nix with the shim, bypassing the /usr/local/bin wrapper (overlay-ephemeral).
+# nix itself lives in the user profile (installed as nixpkgs#nix).
+NIXBIN=/nix/var/nix/profiles/per-user/root/profile/bin/nix
 SHIM=/home/hatch/tools/taint-shim/taint_shim.so
 
 # nix with the shim, bypassing the /usr/local/bin wrapper (overlay-ephemeral).
@@ -49,9 +52,8 @@ case "${1:-}" in
 esac
 
 [ -n "${1:-}" ] || die "usage: dispatcher.sh <program[@version]> [args...]" 2
-[ -f "$PIN_FILE" ] || die "omnibin pin missing: $PIN_FILE" 2
-PIN=$(cat "$PIN_FILE")
-OMNIBIN="github:fzakaria/omnibin/$PIN#omnibin"
+[ -f "$OMNIBIN_FLAKE/flake.nix" ] || die "omnibin flake missing: $OMNIBIN_FLAKE" 2
+OMNIBIN="$OMNIBIN_FLAKE#omnibin"
 
 cmd="$1"; shift
 base="$cmd"; ver=""
@@ -69,7 +71,7 @@ if [ -f "$CACHE_DIR/$cache_key" ]; then
 fi
 
 # --- 2. resolve via pinned omnibin index (profile first for exact versions) ---
-[ -x "$NIXBIN" ] || die "bootstrap nix not executable: $NIXBIN" 2
+[ -x "$NIXBIN" ] || die "profile nix not executable: $NIXBIN" 2
 entry=""
 if [ -n "$ver" ]; then
   # 2a. User profile fast path: an installed binary whose --version contains
@@ -117,7 +119,7 @@ esac
 
 # --- 3. download the closure (store paths only) ---
 if [ "$from_profile" = 0 ] && [ ! -x "$entry" ]; then
-  xnix store realise "$storepath" >/dev/null 2>&1 \
+  xnix build --no-link "$storepath" >/dev/null 2>&1 \
     || die "failed to realise $storepath" 2
 fi
 [ -x "$entry" ] || die "resolved binary not executable: $entry" 2

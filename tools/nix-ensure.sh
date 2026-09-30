@@ -3,13 +3,12 @@
 #
 # Layout: /nix is a SYMLINK to /home/hatch/nix-persist (persistent btrfs).
 # No copy, no per-exec mount — the symlink is a filesystem entry visible to
-# every exec. Two profiles separate concerns:
-#   /nix/var/nix/profiles/bootstrap — nix itself (pinned store path).
-#     The /usr/local/bin/nix wrapper execs this directly, so ordinary
-#     `nix profile install` in the user profile can never take nix away.
+# every exec. One profile holds everything:
 #   /nix/var/nix/profiles/per-user/root/profile (a.k.a. ~/.nix-profile) —
-#     ordinary packages. Both live under /nix/var, i.e. on the persistent
-#     volume, so they survive recycles.
+#     nix itself (installed as nixpkgs#nix) plus ordinary packages.
+# It lives under /nix/var, i.e. on the persistent volume, so it survives
+# recycles. If the profile ever loses its nix binary, ensure_profile_nix
+# reinstalls it from any nix binary found in the persistent store.
 #
 # Constraints:
 # - The sandbox denies chown() even for root -> shim elides redundant chowns.
@@ -18,8 +17,8 @@
 #   sandbox (allow-symlinked-store only covers the store-open path).
 # - Never auto-delete/quarantine the persistent dir on failure (fail loud).
 set -u
-BOOTSTRAP=/nix/var/nix/profiles/bootstrap
-NIXBIN=$BOOTSTRAP/bin/nix
+PROFILE=/nix/var/nix/profiles/per-user/root/profile
+PROFILE_NIX=$PROFILE/bin/nix
 PERSIST=/home/hatch/nix-persist
 TARBALL=/home/hatch/tools/nix-store.tar.gz
 
@@ -37,14 +36,14 @@ for line in \
   "extra-trusted-public-keys = omnibin.cachix.org-1:HWeLv8+LfqLqLDOoQJmvmW7m0ug1Fne/DYaxgdECHgw=" \
   "accept-flake-config = true" \
   "allow-symlinked-store = true" \
-  "build-users-group ="; do
+  "build-users-group = nixbld"; do
   key="${line%% = *}"
   grep -q "^[[:space:]]*${key}[[:space:]]*=" /etc/nix/nix.conf 2>/dev/null \
     || echo "$line" >> /etc/nix/nix.conf
 done
 
 nix_works() {
-  [ -x "$NIXBIN" ] && "$NIXBIN" eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
+  [ -x "$PROFILE_NIX" ] && "$PROFILE_NIX" eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
 }
 
 persist_healthy() {
@@ -63,32 +62,63 @@ ensure_link() {
   ln -s "$PERSIST" /nix
 }
 
-ensure_bootstrap() {
-  # The bootstrap profile holds nix itself, pinned to a store path. It is a
-  # GC root, so its nix binary can't be garbage-collected; and ordinary
-  # `nix profile install` touches only the user profile, so this never needs
-  # the old "rescue nix from ~/.nix-profile" logic. If the bootstrap link is
-  # broken, reinstall from any nix binary found in the persistent store.
-  [ -x "$NIXBIN" ] && return 0
-  local boot_nix
-  boot_nix=$(find "$PERSIST/store" -maxdepth 3 -path "*/bin/nix" -type f 2>/dev/null | head -1)
-  if [ -z "$boot_nix" ]; then
-    echo "FATAL: no nix binary found in $PERSIST/store" >&2
+ensure_profile_nix() {
+  # nix itself lives in the user profile (installed as nixpkgs#nix). If the
+  # profile's nix binary is missing/not executable, reinstall it from the
+  # store. The profile itself is a GC root for its elements, so a store
+  # nix is almost always present.
+  #
+  # Verified 2026-09-30 quirks of `nix profile add <store-path>`:
+  # - If the store path's bin/nix is a SYMLINK to another store path, the
+  #   add links every nix-* binary EXCEPT bin/nix (silent). Must add a path
+  #   whose bin/nix is a real file.
+  # - nix 2.34.8 adding its OWN store path silently skips bin/nix (2.35.2
+  #   does not have this quirk).
+  # - `profile remove X` followed by `profile add X` (same path) updates the
+  #   manifest but does NOT relink bin/nix (silent). So we NEVER remove
+  #   before adding — we add first, then best-effort remove old broken paths.
+  # - Two different nix versions in one profile collide on bin/nix (hard
+  #   error), so the add only works when the old element's bin/nix is
+  #   actually missing from the generation (the broken case).
+  # Net: repair = add newest nix with a real bin/nix (no prior remove).
+  # The version may change on repair; a working newer nix beats a broken one.
+  [ -x "$PROFILE_NIX" ] && return 0
+  local shim=/home/hatch/tools/taint-shim/taint_shim.so
+  local boot_nix target_nix nix_paths p
+  echo "nix-ensure: profile nix missing; repairing $PROFILE" >&2
+  # Newest nix whose bin/nix is a real file (not a symlink): both the
+  # bootstrapper and the install target. 2.35.2 self-add works; 2.34.8's
+  # self-add quirk is avoided by preferring the newest.
+  target_nix=""
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    if [ ! -L "$p" ] && [ -x "$p" ]; then
+      target_nix="/nix/store/$(basename "$(dirname "$(dirname "$p")")")"
+      boot_nix="$p"
+      break
+    fi
+  done < <(find "$PERSIST/store" -maxdepth 3 -path "*/bin/nix" -type f 2>/dev/null \
+    | sort -t- -k3 -V -r)
+  if [ -z "$target_nix" ]; then
+    echo "FATAL: no usable nix in $PERSIST/store" >&2
     return 1
   fi
-  echo "nix-ensure: bootstrap nix missing; reinstalling into $BOOTSTRAP via $boot_nix" >&2
-  rm -f "$BOOTSTRAP"
-  LD_PRELOAD=/home/hatch/tools/taint-shim/taint_shim.so \
-    "$boot_nix" profile add --profile "$BOOTSTRAP" "$(dirname "$(dirname "$boot_nix")")" 2>&1 | tail -2
-  [ -x "$NIXBIN" ]
+  LD_PRELOAD=$shim "$boot_nix" profile add --profile "$PROFILE" "$target_nix" 2>&1 | tail -2
+  # NOTE: we deliberately do NOT remove old/duplicate nix elements here.
+  # `profile remove` (by path or name) after an add can delete bin/nix from
+  # the new generation when elements share store paths (verified 2026-09-30).
+  # A duplicate nix element is harmless; a broken profile is not.
+  [ -x "$PROFILE_NIX" ]
 }
 
 populate_persist() {
   # Fill $PERSIST from the tarball, or fresh install as last resort.
   # Never extract over a non-empty tree (tar hardlinks aren't idempotent).
-  # NOTE: no build-user setup — nix.conf sets `build-users-group =` (empty),
-  # so builds run as the calling UID. Verified with a genuine local build
-  # 2026-09-30; the old nixbld accounts are inert leftovers.
+  # NOTE: builds run as nixbld users — nix.conf sets
+  # `build-users-group = nixbld`; the nixbld group has traverse-only ACLs
+  # (g:nixbld:--x) on /home/hatch, /home/hatch/nix-persist,
+  # /home/hatch/tools, /home/hatch/tools/taint-shim, plus read on
+  # taint_shim.so, because /home/hatch is otherwise 2770 root:nogroup.
   if [ -n "$(ls -A "$PERSIST" 2>/dev/null)" ]; then
     local bad="$PERSIST.bad.$(date +%s)"
     echo "WARNING: $PERSIST non-empty but unhealthy; moving aside to $bad" >&2
@@ -108,5 +138,5 @@ populate_persist() {
 
 persist_healthy || populate_persist
 ensure_link
-ensure_bootstrap
+ensure_profile_nix
 nix_works

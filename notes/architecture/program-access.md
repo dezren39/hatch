@@ -50,13 +50,13 @@ Verified 2026-09-30: `cowsay@3.8.4` (profile), `figlet` (index), stub from `bash
 
 ## Layer 5: on-demand repair
 
-`shell-env.sh` runs a cheap sentinel each startup (stat checks, no nix): if `/nix`, the bootstrap nix, or `/usr/local/bin/nix` look broken, it runs `~/tools/nix-repair.sh` synchronously. Repair uses `flock`, sets `NIX_REPAIR_GUARD` for children (with `BASH_ENV` unset, via `/bin/bash.real`) so nested shells never re-trigger, verifies actual state post-repair, and never deletes `/home/hatch/nix-persist` on failure. Full recycle is still handled by `init.sh` + the `sandbox-boot-init` cron.
+`shell-env.sh` runs a cheap sentinel each startup (stat checks, no nix): if `/nix`, the profile nix, or `/usr/local/bin/nix` look broken, it runs `~/tools/nix-repair.sh` synchronously. Repair uses `flock`, sets `NIX_REPAIR_GUARD` for children (with `BASH_ENV` unset, via `/bin/bash.real`) so nested shells never re-trigger, verifies actual state post-repair, and never deletes `/home/hatch/nix-persist` on failure. Full recycle is still handled by `init.sh` + the `sandbox-boot-init` cron.
 
 ## Summary
 
 | What you type | How it resolves |
 |---|---|
-| `nix ...` | `/usr/local/bin/nix` wrapper → LD_PRELOAD → bootstrap nix |
+| `nix ...` | `/usr/local/bin/nix` wrapper → LD_PRELOAD → profile nix (self-healing) |
 | `cowsay` | `/usr/local/bin/cowsay` → symlink → nix profile |
 | `jq@1.7.1` | `command_not_found_handle` → dispatcher → pinned omnibin → runs |
 | `figlet` | `~/tools/bin/figlet` stub → dispatcher (cached) → runs |
