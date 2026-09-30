@@ -66,6 +66,7 @@
 - [x] Cron verified firing and updating this file — 2026-09-30 ~07:26 run: firing on schedule, daemon healthy (`systemctl` active, `mcpx daemons` RUNNING, HTTP 200 on /v1/health), PRs #194/#195 confirmed OPEN, filed issue #196 + PR #197 for the searchpath/daemon-key bug
 - Phase-1 status (2026-09-30 ~06:45): COMPLETE. Research done (NixOS review → nixos-config-review.md; mcpx/lootbox map → mcpx-opencode-plan.md). Drafts: mcpx systemd unit + init.sh hook + opencode plan (in mcpx-opencode-plan.md). Dispatcher doc written. B/C/D landed as b2af047 (observed via TOOLS.md + git log). All phase-1 files committed/pushed. Awaiting: parent's explicit phase-2 signal; Drew's lootbin-vs-lootbox answer.
 - 06:45 run: finished the interrupted flake import (`nix flake lock`, mcpx resolves via dry-run); mcpx.service absent from systemd as expected (phase 2 not started); demo script written to goal files/; tree committed + pushed.
+- 07:41 run: daemon healthy (PID 69673 RUNNING, HTTP 200 /v1/health); nix 2.35.2 + dispatcher (cowsay 3.8.4) smoke tests pass; PRs #194/#195/#197 still OPEN with no review comments; issue #196 got one comment — dezren39's backlog-architect pipeline adopted it into their backlog tree (parent #177), not a review of our fix; /tmp clones present (dn-nix @ 70f00ea); demo script review-status line refreshed.
 
 ## Awareness (not this program's work — keep an eye, don't own)
 - WI annual report DEVELOPING.TODAY LLC due TODAY 2026-09-30 — filing retry cron 07:12 CDT; needs Drew if blocked
