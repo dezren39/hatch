@@ -23,6 +23,20 @@
  * true no-ops by construction (ownership already matches).
  *
  * Debug: TAINT_SHIM_LOG=1 logs each intercepted call to stderr.
+ *
+ * NOTE (2026-09-30): removing the stat/lstat symlink-spoofing in favor of
+ * nix's native `allow-symlinked-store = true` was TESTED and REJECTED. The
+ * setting only bypasses the LocalStore constructor guard; three other
+ * checks ignore it:
+ *   1. PosixSourceAccessor::assertNoSymlinks (libnixutil) — fires on
+ *      `nix store add-file` / flake source handling in 2.34.8
+ *      ("path '/nix' is a symlink"); 2.35.2 still walks ancestors
+ *      ("(or its ancestor) is a symlink").
+ *   2. The build sandbox setup refuses a symlinked /nix outright:
+ *      'Path "/nix" is world-writable or a symlink. That's not allowed
+ *      for security.' — genuine local builds NEED this interception.
+ * Also: symlinks report mode 0777, which tripped the "world-writable"
+ * half of check #2 — the spoof now also masks the mode to 0755.
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -225,6 +239,10 @@ static void hide_nix_symlink(struct stat *st) {
     if (S_ISLNK(st->st_mode)) {
         st->st_mode &= ~S_IFMT;
         st->st_mode |= S_IFDIR;
+        /* Symlinks always report mode 0777; a world-writable /nix trips
+           nix's build-sandbox security check ("world-writable or a
+           symlink"). Report a sane directory mode instead. */
+        st->st_mode = (st->st_mode & ~07777) | 0755;
     }
 }
 
@@ -234,6 +252,7 @@ int lstat64(const char *path, struct stat64 *buf) {
     if (ret == 0 && is_nix_root(path) && S_ISLNK(buf->st_mode)) {
         buf->st_mode &= ~S_IFMT;
         buf->st_mode |= S_IFDIR;
+        buf->st_mode = (buf->st_mode & ~07777) | 0755;
         LOG("lstat64(%s) -> hid symlink", path);
     }
     return ret;
@@ -253,6 +272,7 @@ int stat64(const char *path, struct stat64 *buf) {
     if (ret == 0 && is_nix_root(path)) {
         buf->st_mode &= ~S_IFMT;
         buf->st_mode |= S_IFDIR;
+        buf->st_mode = (buf->st_mode & ~07777) | 0755;
         LOG("stat64(%s) -> hid symlink", path);
     }
     return ret;

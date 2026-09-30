@@ -2,21 +2,31 @@
 # ~/tools/nix-ensure.sh — make nix usable. Idempotent.
 #
 # Layout: /nix is a SYMLINK to /home/hatch/nix-persist (persistent btrfs).
-# nix normally refuses symlinked /nix, but taint-shim hides the symlink bit
-# via lstat interposition, so the guard passes. No copy, no per-exec mount —
-# the symlink is a filesystem entry visible to every exec.
+# No copy, no per-exec mount — the symlink is a filesystem entry visible to
+# every exec. Two profiles separate concerns:
+#   /nix/var/nix/profiles/bootstrap — nix itself (pinned store path).
+#     The /usr/local/bin/nix wrapper execs this directly, so ordinary
+#     `nix profile install` in the user profile can never take nix away.
+#   /nix/var/nix/profiles/per-user/root/profile (a.k.a. ~/.nix-profile) —
+#     ordinary packages. Both live under /nix/var, i.e. on the persistent
+#     volume, so they survive recycles.
 #
 # Constraints:
 # - The sandbox denies chown() even for root -> shim elides redundant chowns.
 # - The sandbox denies removexattr on taint xattrs -> shim hides them.
+# - The shim also hides the /nix symlink from nix's store guard and build
+#   sandbox (allow-symlinked-store only covers the store-open path).
 # - Never auto-delete/quarantine the persistent dir on failure (fail loud).
 set -u
-NIXBIN=/nix/var/nix/profiles/default/bin/nix
+BOOTSTRAP=/nix/var/nix/profiles/bootstrap
+NIXBIN=$BOOTSTRAP/bin/nix
 PERSIST=/home/hatch/nix-persist
 TARBALL=/home/hatch/tools/nix-store.tar.gz
 
 # Needed for every nix invocation: hides taint xattrs, elides redundant
-# chowns, and hides the /nix symlink from nix's store guard.
+# chowns, and hides the /nix symlink from nix's store/build-sandbox checks
+# (the sandbox blocks removexattr/chown; allow-symlinked-store only covers
+# the store-open path).
 export LD_PRELOAD=/home/hatch/tools/taint-shim/taint_shim.so
 
 # /etc/nix is on the overlay, so rewrite every boot.
@@ -25,7 +35,9 @@ for line in \
   "experimental-features = nix-command flakes" \
   "extra-substituters = https://omnibin.cachix.org" \
   "extra-trusted-public-keys = omnibin.cachix.org-1:HWeLv8+LfqLqLDOoQJmvmW7m0ug1Fne/DYaxgdECHgw=" \
-  "accept-flake-config = true"; do
+  "accept-flake-config = true" \
+  "allow-symlinked-store = true" \
+  "build-users-group ="; do
   key="${line%% = *}"
   grep -q "^[[:space:]]*${key}[[:space:]]*=" /etc/nix/nix.conf 2>/dev/null \
     || echo "$line" >> /etc/nix/nix.conf
@@ -40,13 +52,6 @@ persist_healthy() {
     && [ -f "$PERSIST/var/nix/db/db.sqlite" ]
 }
 
-ensure_users() {
-  groupadd -r nixbld 2>/dev/null || true
-  for i in $(seq 1 10); do
-    useradd -r -g nixbld -G nixbld -d /var/empty -s /bin/false -c "Nix build user $i" nixbld$i 2>/dev/null || true
-  done
-}
-
 ensure_link() {
   if [ -L /nix ]; then
     [ "$(readlink /nix)" = "$PERSIST" ] && return 0
@@ -58,10 +63,12 @@ ensure_link() {
   ln -s "$PERSIST" /nix
 }
 
-ensure_profile_nix() {
-  # The profile can lose its nix binary (a flake `nix profile install` replaces
-  # the installer-provided profile generation). Bootstrap from any nix in the
-  # store and reinstall nixpkgs#nix into the profile.
+ensure_bootstrap() {
+  # The bootstrap profile holds nix itself, pinned to a store path. It is a
+  # GC root, so its nix binary can't be garbage-collected; and ordinary
+  # `nix profile install` touches only the user profile, so this never needs
+  # the old "rescue nix from ~/.nix-profile" logic. If the bootstrap link is
+  # broken, reinstall from any nix binary found in the persistent store.
   [ -x "$NIXBIN" ] && return 0
   local boot_nix
   boot_nix=$(find "$PERSIST/store" -maxdepth 3 -path "*/bin/nix" -type f 2>/dev/null | head -1)
@@ -69,15 +76,19 @@ ensure_profile_nix() {
     echo "FATAL: no nix binary found in $PERSIST/store" >&2
     return 1
   fi
-  echo "nix-ensure: profile lost nix binary; reinstalling via $boot_nix" >&2
-  "$boot_nix" profile install nixpkgs#nix 2>/dev/null || true
+  echo "nix-ensure: bootstrap nix missing; reinstalling into $BOOTSTRAP via $boot_nix" >&2
+  rm -f "$BOOTSTRAP"
+  LD_PRELOAD=/home/hatch/tools/taint-shim/taint_shim.so \
+    "$boot_nix" profile add --profile "$BOOTSTRAP" "$(dirname "$(dirname "$boot_nix")")" 2>&1 | tail -2
   [ -x "$NIXBIN" ]
 }
 
 populate_persist() {
   # Fill $PERSIST from the tarball, or fresh install as last resort.
   # Never extract over a non-empty tree (tar hardlinks aren't idempotent).
-  ensure_users
+  # NOTE: no build-user setup — nix.conf sets `build-users-group =` (empty),
+  # so builds run as the calling UID. Verified with a genuine local build
+  # 2026-09-30; the old nixbld accounts are inert leftovers.
   if [ -n "$(ls -A "$PERSIST" 2>/dev/null)" ]; then
     local bad="$PERSIST.bad.$(date +%s)"
     echo "WARNING: $PERSIST non-empty but unhealthy; moving aside to $bad" >&2
@@ -96,7 +107,6 @@ populate_persist() {
 }
 
 persist_healthy || populate_persist
-ensure_users
 ensure_link
-ensure_profile_nix
+ensure_bootstrap
 nix_works

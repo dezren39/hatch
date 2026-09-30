@@ -5,10 +5,8 @@
 # NOTE: the installer's final "install into default profile" step can fail
 # in this sandbox (taint xattrs); the profile links are built manually then.
 set -u
-groupadd -r nixbld 2>/dev/null || true
-for i in $(seq 1 10); do
-  useradd -r -g nixbld -G nixbld -d /var/empty -s /bin/false -c "Nix build user $i" nixbld$i 2>/dev/null || true
-done
+# NOTE: no nixbld build users — nix.conf sets `build-users-group =` (empty),
+# so builds run as the calling UID (verified 2026-09-30).
 [ -s "$HOME/tools/nix-installer.sh" ] || curl -sSL https://nixos.org/nix/install -o "$HOME/tools/nix-installer.sh"
 rm -rf /nix
 sh "$HOME/tools/nix-installer.sh" --no-daemon --no-channel-add || true
@@ -16,6 +14,11 @@ NIXPKG=$(ls -d /nix/store/*-nix-2.* 2>/dev/null | head -1)
 if [ -z "$NIXPKG" ] || [ ! -x "$NIXPKG/bin/nix" ]; then
   echo "nix-install.sh: installer did not produce a nix package in /nix/store" >&2
   exit 1
+fi
+if [ ! -x /nix/var/nix/profiles/bootstrap/bin/nix ]; then
+  mkdir -p /nix/var/nix/profiles/per-user/root
+  rm -f /nix/var/nix/profiles/bootstrap
+  "$NIXPKG/bin/nix" profile add --profile /nix/var/nix/profiles/bootstrap "$NIXPKG"
 fi
 if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
   mkdir -p /nix/var/nix/profiles/per-user/root

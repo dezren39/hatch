@@ -10,19 +10,30 @@ worth recording.
 - Go: `~/tools/go/bin/go` (1.25.1). Add to PATH as needed.
 - Rust: `CARGO_HOME=~/tools/cargo RUSTUP_HOME=~/tools/rustup`; cargo at `~/tools/cargo/bin/cargo`.
 - `/bin/bash` is a wrapper (installed by `~/tools/install-bash-wrapper.sh`, run
-  on boot via init.sh) that sets `BASH_ENV=~/tools/omnibin-not-found.sh` and
-  execs `/bin/bash.real` (the original binary). Every exec therefore gets the
-  omnibin `command_not_found_handle` automatically — `program@version` (e.g.
-  `cowsay@3.8.4`) works with zero per-exec setup. The wrapper is transparent
-  for all other commands.
+  on boot via init.sh) that sets `BASH_ENV=~/tools/shell-env.sh` and
+  execs `/bin/bash.real`. Every exec therefore gets `program@version` support
+  with zero per-exec setup. `shell-env.sh` is startup-clean (4–5ms): PATH
+  setup + `command_not_found_handle` only. The installer never overwrites
+  `/bin/bash.real` when `/bin/bash` is already a wrapper; rollback is
+  `cp /bin/bash.real /bin/bash`.
+- `~/tools/dispatcher.sh` — single resolver for `program[@version]`, used by
+  both `command_not_found_handle` and stubs in `~/tools/bin/` (on PATH).
+  Pinned omnibin flake (`~/tools/dispatcher/omnibin-pin`); persistent GC roots
+  (`/nix/var/nix/gcroots/dispatcher/`); disk cache (`~/tools/dispatcher/cache/`,
+  ~16ms hits); loud failure (exit 127) on inexact version, never substitutes.
+  Refresh the pin only via `~/tools/omnibin-refresh.sh`.
 - Nix 2.35.2 single-user (`--no-daemon`): `/nix` is a SYMLINK to
   `/home/hatch/nix-persist` (persistent btrfs). nix normally refuses a symlinked
-  /nix, but taint-shim hides the symlink bit via lstat interposition so the
-  guard passes. No copy, no per-exec mount — the symlink survives recycles
-  and is visible to every exec. `~/tools/nix-ensure.sh` (wired into
-  `~/tools/init.sh`) is idempotent: populates the persistent dir from tarball
-  if unhealthy, ensures the symlink, verifies `nix eval`.
-  Binary at `/nix/var/nix/profiles/default/bin/nix`; build users nixbld1-10 exist.
+  /nix, but taint-shim hides the symlink bit via lstat/stat interposition
+  (also masks mode 0777→0755; `allow-symlinked-store=true` alone is NOT
+  sufficient — tested 2026-09-30). No copy, no per-exec mount — the symlink
+  survives recycles and is visible to every exec. `~/tools/nix-ensure.sh`
+  (wired into `~/tools/init.sh`) is idempotent: populates the persistent dir
+  from tarball if unhealthy, ensures the symlink, verifies `nix eval`.
+  Binary at `/nix/var/nix/profiles/bootstrap/bin/nix` (pinned bootstrap
+  profile, nix 2.34.8 — user `nix profile` mutations can't take nix away).
+  `build-users-group =` (empty) in nix.conf: builds run as root because
+  nixbld users can't traverse `/home/hatch` (do NOT recreate nixbld).
   - `~/tools/nix-ensure.sh` — fast (~0.2s) when healthy. NEVER auto-deletes or
     quarantines the persistent dir on failure (fail loud); NEVER extracts over
     a non-empty tree (tar hardlinks aren't idempotent — moves aside as
@@ -42,10 +53,17 @@ worth recording.
     `experimental-features = nix-command flakes`,
     omnibin cachix `extra-substituter` + key, `accept-flake-config = true`.
   - `/usr/local/bin/nix` is a wrapper script (on the default PATH) that sets
-    LD_PRELOAD and execs the real binary — so `nix` works in any shell with
-    no per-shell setup. Created by `~/tools/install-nix-wrapper.sh`, run on
-    boot via init.sh (overlay wipes /usr/local/bin). After `nix profile`
+    LD_PRELOAD and execs the BOOTSTRAP nix directly — so `nix` works in any
+    shell with no per-shell setup, and `nix profile` mutations can't remove it.
+    Created by `~/tools/install-nix-wrapper.sh`, run on boot via init.sh
+    (overlay wipes /usr/local/bin; atomic temp+rename install). After `nix profile`
     install/remove/upgrade/rollback it auto-runs nix-profile-sync.sh.
+  - `~/tools/nix-repair.sh` — on-demand repair triggered by the shell sentinel
+    in `shell-env.sh` when `/nix`, the bootstrap, or `/usr/local/bin/nix` look
+    broken. `flock`-guarded, `NIX_REPAIR_GUARD` recursion guard (children get
+    `BASH_ENV` unset, run via `/bin/bash.real`), verifies actual state
+    post-repair, never deletes nix-persist on failure. Full recycle still via
+    init.sh + `sandbox-boot-init` cron.
   - `~/tools/nix-profile-sync.sh` symlinks `~/.nix-profile/bin/*` into
     `/usr/local/bin/` so `nix profile install`ed apps (e.g. cowsay) are on the
     PATH in every shell with no wrappers per program. Skips `nix*` (the
@@ -87,14 +105,18 @@ worth recording.
   <path>` fetches any resolved binary (verified: ran Python 3.7.1 from 2018).
 - Its cachix binary cache is baked into /etc/nix/nix.conf by nix-ensure.sh, so
   no --accept-flake-config flag needed and no source builds after a recycle.
-- Near-0-step without FUSE: ~/tools/omnibin-not-found.sh defines
-  command_not_found_handle (sourced from ~/.bashrc) — type any nixpkgs binary
-  (e.g. `cowsay`, `cowsay@3.8.4`) and it's resolved, fetched, and run.
-  Lookup order: nix profile (fast path for `nix profile install`ed packages),
-  then the omnibin index (`which --all` for @version), then fallback to
-  `nix run nixpkgs#`. Verified: `jq`, `python3@3.7.1`, `cowsay@3.8.4`
-  (profile), `cowsay@3.8.3` (omnibin index); misses still print
-  'command not found' with exit 127.
+- Near-0-step without FUSE: `~/tools/dispatcher.sh` (via
+  `command_not_found_handle` in `~/tools/shell-env.sh`, sourced from
+  `BASH_ENV` by the `/bin/bash` wrapper) — type any nixpkgs binary
+  (e.g. `cowsay`, `cowsay@3.8.4`) and it's resolved, fetched, GC-rooted,
+  cached, and run. Lookup order: nix profile (exact `--version` fast path),
+  then the pinned omnibin index (`which --all` for @version), then fallback
+  to `nix run nixpkgs#`. Verified: `figlet` (index, survives `nix store gc`
+  via persistent root), `cowsay@3.8.4` (profile); `cowsay@9.9.9` fails loudly
+  with exit 127 (no substitution). Misses still print 'command not found'.
+- Stubs in `~/tools/bin/` (auto-created on resolution, on PATH) let
+  subprocesses and build tools discover resolved binaries without bash's
+  `command_not_found_handle`.
 - FUSE mounts do NOT work here (tested 2026-09-29): kernel has fuse and
   user+mount namespaces work, but the sandbox denies mknod (EPERM as root and
   in a userns), so /dev/fuse can't be created. The shell app fails cleanly at

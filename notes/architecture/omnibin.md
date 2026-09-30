@@ -79,24 +79,42 @@ Always run with the taint shim:
 `LD_PRELOAD=~/tools/taint-shim/taint_shim.so` (the `/usr/local/bin/nix`
 wrapper does this automatically).
 
-### Zero-step `@version` support
+### Zero-step `@version` support — the dispatcher
 
-`~/tools/omnibin-not-found.sh` defines `command_not_found_handle`, loaded in
-every exec via `BASH_ENV` (the `/bin/bash` wrapper sets it; there is no
-`~/.bashrc`). Type any nixpkgs binary and it resolves, fetches, and runs:
+`~/tools/dispatcher.sh` is the single resolver for `program[@version]`,
+called by both `command_not_found_handle` (via `BASH_ENV` →
+`~/tools/shell-env.sh`) and by executable stubs in `~/tools/bin/` (for
+subprocess/build-tool discovery). Type any nixpkgs binary and it resolves,
+fetches, and runs:
 
 ```bash
 $ cowsay@3.8.4 "hello"     # works with zero per-exec setup
 ```
 
-Lookup order: nix profile (fast path) → omnibin index (`which --all` for
-`@version`) → fallback `nix run nixpkgs#<name>`. Misses still print
-`command not found` with exit 127. Verified: `jq`, `python3@3.7.1`
-(ran Python 3.7.1 from 2018), `cowsay@3.8.4` (profile), `cowsay@3.8.3`
-(index).
+What it does: resolves name[@version] → downloads the closure
+(`nix store realise`) → registers a **persistent GC root** in
+`/nix/var/nix/gcroots/dispatcher/` (survives `nix store gc`) → caches the
+resolution in `~/tools/dispatcher/cache/` (cache hit = no nix invocation,
+~16ms) → creates a stub in `~/tools/bin/<name>` → execs the binary
+(preserving args and exit status).
+
+Rules: the omnibin flake is **pinned** (`~/tools/dispatcher/omnibin-pin`,
+currently `459dcff6ee82dd1fb7f3706c4ec5519019635a0a`); an explicit
+`name@version` with no exact match in the index is a **loud failure**
+(exit 127, never a silent substitution). The pin is refreshed ONLY by
+`~/tools/omnibin-refresh.sh` (explicit maintenance), never on a miss.
+Lookup order: user profile fast path (exact `--version` match) → pinned
+omnibin index (`which --all` for `@version`) → fallback `nix run nixpkgs#`.
+Misses print `command not found` with exit 127.
+
+Verified 2026-09-30: `cowsay@3.8.4` (profile fast path), `figlet`
+(unversioned, omnibin index), stub from `bash -c`, args + exit-status
+preservation, survival across `nix store gc` (265 paths deleted, figlet
+protected by its GC root), loud failure on `cowsay@9.9.9` (exit 127).
+Cache hit: 16ms.
 
 At Drewry's direction: no run script, no `~/tools` copy of omnibin itself —
-nix-native only, via the flake.
+nix-native only, via the pinned flake.
 
 ## What doesn't work here
 
@@ -105,7 +123,7 @@ nix-native only, via the flake.
 | `nix run github:fzakaria/omnibin` shell app | ❌ fails cleanly | Needs FUSE mount; `/dev/fuse` can't be created (`mknod` EPERM) |
 | Index query (`#omnibin -- which`) | ✅ works | No FUSE needed |
 | `nix-store --realise` + run | ✅ works | Plain store fetch |
-| `command_not_found_handle` `@version` | ✅ works | Built on the above |
+| dispatcher `@version` | ✅ works | Built on the above, with GC roots + cache |
 | Docker image | ❌ n/a | No Docker here; also needs `/dev/fuse` + `SYS_ADMIN` |
 
 Needs the runtime to expose `/dev/fuse` for the full experience.

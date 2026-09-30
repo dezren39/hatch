@@ -19,9 +19,13 @@ nix run nixpkgs#hello
 
 ## Step-by-step: what nix-install.sh does
 
-1. **Creates build users** — `nixbld1`–`nixbld10` in group `nixbld`
-   (`groupadd -r nixbld`, `useradd -r ... -d /var/empty -s /bin/false`).
-   Single-user install still wants the build users to exist.
+1. **Build users: NOT created** (changed 2026-09-30). `build-users-group =`
+   (empty) in `nix.conf` — builds run as the calling UID (root). The old
+   `nixbld1`–`nixbld10`/`nixbld` group can't traverse `/home/hatch`
+   (`drwxrws--- root:nogroup`), so sandboxed builds failed with Permission
+   denied. `nix-ensure.sh`/`nix-install.sh` no longer recreate them; existing
+   accounts are inert. Verified: genuine local `builtins.derivation` build
+   succeeds.
 
 2. **Downloads the upstream installer** if missing:
    `curl -sSL https://nixos.org/nix/install -o ~/tools/nix-installer.sh`
@@ -91,8 +95,22 @@ It skips `nix*` (the wrapper covers those) and never clobbers real files.
 
 `nix-ensure.sh` also heals a subtle failure mode: a flake-based
 `nix profile install` can replace the installer-provided profile generation
-and lose the nix binary itself. If `nix` is broken, it bootstraps a working
-nix from any copy in the store and reinstalls `nixpkgs#nix`.
+and lose the nix binary itself. Since 2026-09-30 the bootstrap lives in a
+separate pinned profile, `/nix/var/nix/profiles/bootstrap` (nix 2.34.8),
+and the `/usr/local/bin/nix` wrapper execs it directly — a `nix profile`
+mutation in the user profile can no longer take nix away. If the bootstrap
+link itself breaks, `nix-ensure.sh` reinstalls it from any nix in the store.
+
+## On-demand repair
+
+`~/tools/shell-env.sh` (sourced via `BASH_ENV` in every shell) runs a cheap
+sentinel: if `/nix`, the bootstrap nix, or `/usr/local/bin/nix` look broken,
+it runs `~/tools/nix-repair.sh` synchronously. The repair is `flock`-guarded,
+sets `NIX_REPAIR_GUARD` (children inherit; `BASH_ENV` unset; runs via
+`/bin/bash.real`) so nested shells never re-trigger, verifies actual state
+(`/nix` target, bootstrap runs, wrappers match), and never deletes
+`/home/hatch/nix-persist` on failure. Full recycle is still handled by
+`init.sh` + the `sandbox-boot-init` cron.
 
 ## What breaks, and why
 
@@ -100,9 +118,11 @@ nix from any copy in the store and reinstalls `nixpkgs#nix`.
 |---|---|---|
 | Installer profile step fails | `user.hatch_tainted*` xattrs, sandbox denies `removexattr` | Manual profile symlinks (in `nix-install.sh`) |
 | `nix: the Nix store is not allowed...` symlink error | nix refuses a symlinked `/nix` | `LD_PRELOAD` taint-shim hides the symlink via lstat/stat interposition |
-| `nix` missing after `nix profile install` | Flake install replaces profile generation | `nix-ensure.sh` bootstraps from store copy |
+| `nix` missing after `nix profile install` | Flake install replaces profile generation | Pinned bootstrap profile + wrapper (2026-09-30) |
 | Slow first `nix run` after recycle (~2 min) | Store must be re-fetched | `nix-snapshot.sh` tarball restores it with zero download |
 | `nix run` wants to build from source | Missing binary cache | omnibin cachix substituter baked into `nix.conf` |
+| Sandboxed builds fail (Permission denied) | `nixbld` users can't traverse `/home/hatch` | `build-users-group =` (empty); builds run as root |
+| `allow-symlinked-store` doesn't fully work | Only bypasses the store-open guard; build sandbox + `assertNoSymlinks` still reject symlinked `/nix` | Taint-shim stat/lstat interception kept (also masks mode 0777→0755) |
 
 ## References
 

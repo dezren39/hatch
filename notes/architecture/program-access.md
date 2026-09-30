@@ -27,30 +27,37 @@ Result: `nix profile install nixpkgs#cowsay` → `cowsay` is immediately on PATH
 
 ## Layer 3: `/bin/bash` Wrapper
 
-`/bin/bash` is replaced with a wrapper script that sets `BASH_ENV=~/tools/omnibin-not-found.sh` and execs `/bin/bash.real` (the original binary).
+`/bin/bash` is replaced with a wrapper script that sets `BASH_ENV=~/tools/shell-env.sh` and execs `/bin/bash.real` (a real bash binary).
 
 - `BASH_ENV` is inherited across exec and auto-sourced by non-interactive bash
-- Defines `command_not_found_handle` in every exec automatically
+- `shell-env.sh` is startup-clean by design: PATH setup + `command_not_found_handle` only, no network/nix (4–5ms startup, audited 2026-09-30)
 - Installed by `~/tools/install-bash-wrapper.sh`, recreated on boot via `init.sh`
+- Atomic install (temp in /bin + rename); never overwrites `/bin/bash.real` when `/bin/bash` is already a wrapper (verifies ELF first — this exact failure happened 2026-09-30, recovered via nix store bash)
+- Rollback: `cp /bin/bash.real /bin/bash`
 - Transparent for all other commands
 
-## Layer 4: `command_not_found_handle` (`@version`)
+## Layer 4: dispatcher (`@version` + stubs)
 
-`~/tools/omnibin-not-found.sh` defines a `command_not_found_handle` that resolves `program@version`:
+`command_not_found_handle` (defined in `shell-env.sh`) execs `~/tools/dispatcher.sh` — the single resolver for `program[@version]`. Stubs in `~/tools/bin/` (on PATH) cover subprocess/build-tool discovery.
 
-1. **Nix profile** (fast path) — checks if already installed via `nix profile`
-2. **Omnibin index** — queries `nix run github:fzakaria/omnibin#omnibin -- which --all` for the specific version
+1. **Nix profile** (fast path) — exact `--version` match for `name@version`
+2. **Pinned omnibin index** — `which --all` for the version (pin in `~/tools/dispatcher/omnibin-pin`; refreshed only by `omnibin-refresh.sh`)
 3. **Nixpkgs fallback** — `nix run nixpkgs#program`
 
-Verified: `jq@1.7.1`, `cowsay@3.8.4` (profile), `cowsay@3.8.3` (omnibin index), `tree@2.1.0` → falls back to 2.3.2 (nixpkgs current).
+Resolved binaries get a persistent GC root (`/nix/var/nix/gcroots/dispatcher/`), disk cache (`~/tools/dispatcher/cache/`, ~16ms hits), and a stub. Explicit `name@version` with no exact match fails loudly (exit 127, never substitutes).
 
-Note: omnibin's index pin is stale (e.g., max cowsay is 3.8.3, not 3.8.4). The fallback handles this.
+Verified 2026-09-30: `cowsay@3.8.4` (profile), `figlet` (index), stub from `bash -c`, args/exit-status preserved, GC survival.
+
+## Layer 5: on-demand repair
+
+`shell-env.sh` runs a cheap sentinel each startup (stat checks, no nix): if `/nix`, the bootstrap nix, or `/usr/local/bin/nix` look broken, it runs `~/tools/nix-repair.sh` synchronously. Repair uses `flock`, sets `NIX_REPAIR_GUARD` for children (with `BASH_ENV` unset, via `/bin/bash.real`) so nested shells never re-trigger, verifies actual state post-repair, and never deletes `/home/hatch/nix-persist` on failure. Full recycle is still handled by `init.sh` + the `sandbox-boot-init` cron.
 
 ## Summary
 
 | What you type | How it resolves |
 |---|---|
-| `nix ...` | `/usr/local/bin/nix` wrapper → LD_PRELOAD → real binary |
+| `nix ...` | `/usr/local/bin/nix` wrapper → LD_PRELOAD → bootstrap nix |
 | `cowsay` | `/usr/local/bin/cowsay` → symlink → nix profile |
-| `jq@1.7.1` | `command_not_found_handle` → omnibin/nixpkgs → runs |
+| `jq@1.7.1` | `command_not_found_handle` → dispatcher → pinned omnibin → runs |
+| `figlet` | `~/tools/bin/figlet` stub → dispatcher (cached) → runs |
 | `gh` | `/usr/local/bin/gh` → symlink → nix profile (gh 2.101.0) |

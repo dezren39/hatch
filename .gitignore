@@ -72,3 +72,9 @@ go/
 
 # === Generated data (regenerable, too big for git) ===
 notes/disk-listings/
+
+# === Dispatcher runtime state (stubs, cache, locks — regenerated on use) ===
+tools/bin/
+tools/dispatcher/cache/
+.nix-repair.lock
+.gitconfig
