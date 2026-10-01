@@ -95,3 +95,4 @@ tools/dispatcher/cache/
 
 # mcp-remote OAuth token cache (secrets, machine-local)
 .mcp-auth/
+/notes/TODO.md
