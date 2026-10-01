@@ -22,6 +22,7 @@ logs/
 .postgres-ready
 .hatch-db-change-signals
 .vnc/
+.Xauthority
 runtime.lock
 
 # === Toolchain binaries (reinstalled via scripts) ===
