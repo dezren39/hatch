@@ -34,9 +34,18 @@
     # the symlink (/home/hatch/nix-persist/store/... — still the real store).
     # stdenv sets NIX_ENFORCE_PURITY=1 by default; exporting 0 for this one
     # derivation is safe and honest here — the "impure" path IS the store.
+    # 2026-10-01: upstream #301 put git on PATH (nativeCheckInputs), which
+    # activated go's automatic VCS stamping (-buildvcs=auto). Go's repo
+    # detection stats upward from the sandbox build dir with no filesystem-
+    # boundary stop; our build dir is /home/hatch/nix-persist/var/nix/builds/
+    # (inside this repo!), so go latches onto /home/hatch/.git and dies with
+    # "error obtaining VCS status: exit status 128" (dubious ownership as
+    # nixbld). The tarball source has no .git by design, so stamping could
+    # never be right — disable it. Upstream issue #304, PR #305 carries the
+    # permanent fix; this override goes away once that merges.
     packages.x86_64-linux.mcpx =
       inputs.dezren39-nix.packages.x86_64-linux.mcpx.overrideAttrs (old: {
-        preBuild = (old.preBuild or "") + "\nexport CGO_ENABLED=0\nexport NIX_ENFORCE_PURITY=0\n";
+        preBuild = (old.preBuild or "") + "\nexport CGO_ENABLED=0\nexport NIX_ENFORCE_PURITY=0\nexport GOFLAGS=\"$GOFLAGS -buildvcs=false\"\n";
       });
   };
 }

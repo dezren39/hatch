@@ -151,6 +151,20 @@ worth recording.
     go.CGO_ENABLED) so no C toolchain is needed at all; makeCWrapper's
     postInstall wrapProgram still compiles a C wrapper, which is where the
     purity flag becomes necessary. Upstreamed to dezren39/nix as PR #194.
+  - **Sandbox build dir is NOT /build here** (found 2026-10-01 via probe
+    derivation): builds run under
+    `/home/hatch/nix-persist/var/nix/builds/nix-<pid>-<id>` — INSIDE
+    /home/hatch, which is itself a git repo. Consequence: Go's
+    `-buildvcs=auto` stamping stats upward from the build cwd with NO
+    filesystem-boundary stop (unlike git's own discovery), latches onto
+    /home/hatch/.git, and either stamps WRONG provenance (your dotfiles'
+    state into the binary) or fails outright: `error obtaining VCS status:
+    exit status 128` when `git status --porcelain` hits dubious ownership
+    as the nixbld build user. Trigger condition: git on PATH during
+    buildPhase (hit 2026-10-01: upstream #301 added git to nativeCheckInputs,
+    activating stamping that previously silently skipped). Fix for Go
+    derivations: `GOFLAGS=-buildvcs=false` (upstream issue #304, PR #305;
+    our flake carries it as a preBuild export until that merges).
 
 ## Sandbox filesystem model (learned 2026-09-29, corrected)
 - Kernel persists across execs, but the sandbox DOES get recycled (new boot_id,
