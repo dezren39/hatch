@@ -41,11 +41,15 @@
     # (inside this repo!), so go latches onto /home/hatch/.git and dies with
     # "error obtaining VCS status: exit status 128" (dubious ownership as
     # nixbld). The tarball source has no .git by design, so stamping could
-    # never be right — disable it. Upstream issue #304, PR #305 carries the
-    # permanent fix; this override goes away once that merges.
+    # never be right. Upstream fixed it themselves in c12bcec (PR #306,
+    # closing our issue #304) with the identical GOFLAGS="-buildvcs=false"
+    # mechanism in package.nix's preBuild — our PR #305 was superseded and
+    # closed. The GOFLAGS part of this override is therefore gone; the two
+    # remaining exports stay because they are environment-specific to this
+    # symlinked-store host (see above).
     packages.x86_64-linux.mcpx =
       inputs.dezren39-nix.packages.x86_64-linux.mcpx.overrideAttrs (old: {
-        preBuild = (old.preBuild or "") + "\nexport CGO_ENABLED=0\nexport NIX_ENFORCE_PURITY=0\nexport GOFLAGS=\"$GOFLAGS -buildvcs=false\"\n";
+        preBuild = (old.preBuild or "") + "\nexport CGO_ENABLED=0\nexport NIX_ENFORCE_PURITY=0\n";
       });
   };
 }
