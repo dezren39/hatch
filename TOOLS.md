@@ -215,3 +215,8 @@ worth recording.
   in a userns), so /dev/fuse can't be created. The shell app fails cleanly at
   mount with "fuse: device /dev/fuse not found". Needs the runtime to expose
   /dev/fuse. After a sandbox recycle, `nix run` re-fetches from cachix (~2 min).
+
+## Git repo layout (hit 2026-10-01)
+- `~/hatch-personal` is the tracked git repo for notes/TODO/docs (origin → dezren39/hatch-personal).
+- `/home/hatch` is ALSO its own separate enclosing git repo — do NOT run `git status/add/commit` from there for nix-program work; it shows a clean/foreign tree and is not where the check commits live.
+- `~/notes/TODO.md` is a SYMLINK to `~/hatch-personal/nix-program-TODO.md` — commit with `git -C ~/hatch-personal`. Other symlinks into the repo: `~/memory` → `~/hatch-personal/memory`, `~/workspace` → `~/hatch-personal/workspace` (so goal files/demo-script live in the repo tree even though the goal guide gives `~/workspace/...` paths).
