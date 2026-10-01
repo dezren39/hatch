@@ -50,6 +50,47 @@ nix_works() {
     && /usr/local/bin/nix eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
 }
 
+# --- Personal-repo symlink guard (~/hatch-personal, private) ---
+# The canonical personal paths under $HOME are symlinks into ~/hatch-personal.
+# If anything ever replaces a link with a real file/dir, edits would silently
+# stop reaching the private repo — detect and repair loudly. Runs on every
+# poll (cheap: a dozen stats), not just on boot.
+PERSONAL_REPO=/home/hatch/hatch-personal
+PERSONAL_LINKS="MEMORY.md USER.md SOUL.md IDENTITY.md AGENTS.md HEARTBEAT.md PROACTIVE_PREFERENCES.md memory dreams logs user workspace/goals workspace/user"
+check_personal_links() {
+  local rel link target stamp
+  for rel in $PERSONAL_LINKS; do
+    link="/home/hatch/$rel"
+    target="$PERSONAL_REPO/$rel"
+    if [ -L "$link" ]; then
+      if [ "$(readlink "$link")" != "$target" ]; then
+        echo "[$START_DT] init: personal-link '$rel' pointed at $(readlink "$link") — re-pointing" >> "$LOG"
+        ln -sfn "$target" "$link"
+      fi
+      continue
+    fi
+    if [ ! -e "$target" ]; then
+      echo "[$START_DT] init: personal-link '$rel' BROKEN — repo target $target missing, cannot repair" >> "$LOG"
+      continue
+    fi
+    if [ -e "$link" ]; then
+      # Real file/dir where a symlink should be: keep the newer content, then re-link.
+      stamp=$(date +%Y%m%d-%H%M%S)
+      mkdir -p "$PERSONAL_REPO/.desync-backup"
+      if [ -f "$link" ] && [ -f "$target" ] && [ "$link" -nt "$target" ]; then
+        cp -p "$link" "$target"
+        echo "[$START_DT] init: personal-link '$rel' was a real file NEWER than the repo copy — synced into repo first" >> "$LOG"
+      fi
+      mv "$link" "$PERSONAL_REPO/.desync-backup/$(printf '%s' "$rel" | tr '/' '_').$stamp"
+      echo "[$START_DT] init: personal-link '$rel' was a real file/dir — moved aside to .desync-backup, re-linking" >> "$LOG"
+    else
+      echo "[$START_DT] init: personal-link '$rel' missing — re-creating" >> "$LOG"
+    fi
+    ln -s "$target" "$link"
+  done
+}
+check_personal_links
+
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$BOOT_ID" ] && nix_works; then
   echo "[$START_DT] init: already initialized for boot $BOOT_ID, nothing to do" >> "$LOG"
   exit 0
