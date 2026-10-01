@@ -56,7 +56,10 @@ nix_works() {
 # stop reaching the private repo — detect and repair loudly. Runs on every
 # poll (cheap: a dozen stats), not just on boot.
 PERSONAL_REPO=/home/hatch/hatch-personal
-PERSONAL_LINKS="MEMORY.md USER.md SOUL.md IDENTITY.md AGENTS.md HEARTBEAT.md PROACTIVE_PREFERENCES.md memory dreams logs user workspace/goals workspace/user"
+PERSONAL_LINKS="MEMORY.md USER.md SOUL.md IDENTITY.md AGENTS.md HEARTBEAT.md PROACTIVE_PREFERENCES.md memory dreams logs workspace/goals workspace/user"
+# NOTE: ~/user is intentionally NOT managed here — it is Meta platform runtime
+# state (voice-call lifecycle), and a platform process recreates it as a real
+# dir (observed 2026-09-30). A backup copy lives in the personal repo.
 check_personal_links() {
   local rel link target stamp
   for rel in $PERSONAL_LINKS; do
