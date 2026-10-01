@@ -53,6 +53,15 @@ IDENTITY.md
 HEARTBEAT.md
 AGENTS.md
 
+# === Private repo (~/hatch-personal, symlinked back into this tree) ===
+# The symlinks above/below resolve into hatch-personal; never track either.
+/hatch-personal/
+# (slash-less: also matches the symlinks, which trailing-slash patterns miss)
+/memory
+/dreams
+/logs
+/user
+
 # === Platform runtime state ===
 # agents/ contains subagent execution records (sessions.json metadata +
 # .jsonl transcripts). Too sensitive for git — never track.
