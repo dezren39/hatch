@@ -21,6 +21,7 @@ logs/
 .nix-profile
 .postgres-ready
 .hatch-db-change-signals
+.vnc/
 runtime.lock
 
 # === Toolchain binaries (reinstalled via scripts) ===
