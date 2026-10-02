@@ -216,6 +216,9 @@ worth recording.
   mount with "fuse: device /dev/fuse not found". Needs the runtime to expose
   /dev/fuse. After a sandbox recycle, `nix run` re-fetches from cachix (~2 min).
 
+## Git credential helper (fixed 2026-10-02)
+- `~/.gitconfig`'s `credential.https://github.com.helper` had pinned a literal nix store path (`!/home/hatch/nix-persist/store/<hash>-gh-2.101.0/bin/.gh-wrapped auth git-credential`); store layout drift killed the `.gh-wrapped` wrapper and every `git push` died with "could not read Username". NEVER pin absolute nix store paths in user configs — use the PATH-resolved `!gh auth git-credential` (gh reads its token from ~/.config/gh/hosts.yml). Backup at ~/.gitconfig.bak-20261002-1356.
+
 ## Git repo layout (hit 2026-10-01)
 - `~/hatch-personal` is the tracked git repo for notes/TODO/docs (origin → dezren39/hatch-personal).
 - `/home/hatch` is ALSO its own separate enclosing git repo — do NOT run `git status/add/commit` from there for nix-program work; it shows a clean/foreign tree and is not where the check commits live.
