@@ -94,6 +94,7 @@ tools/bin/
 tools/dispatcher/cache/
 .nix-repair.lock
 .gitconfig
+.gitconfig.bak*
 
 # mcp-remote OAuth token cache (secrets, machine-local)
 .mcp-auth/
