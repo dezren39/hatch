@@ -238,3 +238,8 @@ worth recording.
 ## mcpx daemon
 - The daemon's HTTP health endpoint binds an EPHEMERAL port per boot (35817, 36999, 33983 observed) — discover it via `journalctl -u mcpx` ("listening on ... and http://127.0.0.1:PORT") or `ss -tlnp | grep mcpx-wrapped`, NOT from config.json's `port` key (41001 — not what it binds). Probing 41001 returns 000 even when the daemon is healthy. (Hit 2026-10-05.)
 - `mcpx call` end-to-end syntax: `mcpx call <namespace>.<tool> '{"json":"args"}'` (arguments must be JSON, not key=value) — e.g. `mcpx call fff_nix.grep '{"pattern":"flake.nix"}'`.
+
+## Exec stdin vs heredoc (hit 2026-10-05)
+- The exec tool's `stdin` parameter CONFLICTS with shell heredocs (`python3 - <<'EOF'`): the heredoc wins and the `stdin` parameter content is silently dropped — the script runs seeing empty stdin, with no error. Three consecutive Cloudflare auth checks ran with an empty token because of this and reported "not authenticated".
+- Rule: when a script needs stdin (e.g. a secret), put the code in `python3 -c '...'` (no single quotes inside) and let the `stdin` parameter carry the secret. Never combine `<<'EOF'` with the `stdin` parameter.
+- Related: Python's `http.client` ignores proxy env vars and tries direct TLS (fails in the sandbox with SSL WRONG_VERSION_NUMBER); `urllib.request` honors the egress proxy env vars. Use urllib for outbound HTTPS from exec.
