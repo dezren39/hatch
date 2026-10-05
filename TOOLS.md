@@ -244,6 +244,10 @@ worth recording.
 - Rule: when a script needs stdin (e.g. a secret), put the code in `python3 -c '...'` (no single quotes inside) and let the `stdin` parameter carry the secret. Never combine `<<'EOF'` with the `stdin` parameter.
 - Related: Python's `http.client` ignores proxy env vars and tries direct TLS (fails in the sandbox with SSL WRONG_VERSION_NUMBER); `urllib.request` honors the egress proxy env vars. Use urllib for outbound HTTPS from exec.
 
+## nix store delete vs exec environ GC roots (hit 2026-10-05)
+- `nix store delete <path>` fails with "still alive" when the literal store path appears in the exec command text: the exec harness holds the command in a process's environment, and nix treats `/proc/<pid>/environ` as a GC root. The root is a sibling harness process, not your shell.
+- Rule: never put a literal store path in the command. Resolve it into an unexported shell variable first (e.g. `OUT=$(nix build --print-out-paths --no-link .#demo)`, `DRV=$(nix eval --raw .#demo.drvPath)`), then `nix store delete "$OUT" "$DRV"` — variable references don't land in environ.
+
 ## init.sh recycle-straddle race (observed 2026-10-05)
 - init.sh decides "already initialized" from the per-boot marker file AT SCRIPT START. A recycle mid-run is not re-checked: the 14:11:51 CDT recycle fell inside this routine's 14:11:43–14:12:39 init.sh run, which still reported "already-initialized" against the OLD boot's (now-wiped) marker — the first full init on the new boot happened 9 min later at this run's 14:21:06 execution.
 - Harmless here: the sandbox-boot-init cron also keys on the per-boot marker, so the first init.sh execution after the recycle always does a full init; the straddling run just reports stale good news. Exposure window = one schedule interval. When triaging "already-initialized" lines in events.log against init.log START lines, check which boot_id each belongs to — a mismatch within ~10 min means a straddle, not a missed init.
