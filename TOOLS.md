@@ -239,6 +239,76 @@ worth recording.
 - The daemon's HTTP health endpoint binds an EPHEMERAL port per boot (35817, 36999, 33983 observed) — discover it via `journalctl -u mcpx` ("listening on ... and http://127.0.0.1:PORT") or `ss -tlnp | grep mcpx-wrapped`, NOT from config.json's `port` key (41001 — not what it binds). Probing 41001 returns 000 even when the daemon is healthy. (Hit 2026-10-05.)
 - `mcpx call` end-to-end syntax: `mcpx call <namespace>.<tool> '{"json":"args"}'` (arguments must be JSON, not key=value) — e.g. `mcpx call fff_nix.grep '{"pattern":"flake.nix"}'`.
 
+## Bitwarden Secrets Manager CLI (bws 2.1.0, set up 2026-10-07)
+- Binary: `~/tools/bin/bws` (on PATH). Installed from
+  `github.com/bitwarden/sdk-sm` release `bws-v2.1.0`
+  (`bws-x86_64-unknown-linux-gnu-2.1.0.zip`).
+- Token lives in `~/.config/bitwarden/access-token` (600, dir 700).
+  Optional EU vault override in `~/.config/bitwarden/server-url`.
+- `source ~/tools/bws-env.sh` → exports `BWS_ACCESS_TOKEN` (never prints it).
+- `echo "$TOKEN" | ~/tools/bws-receive-token.sh` → stores token from stdin
+  (keeps it out of argv/process list/history), chmod 600, then verifies with
+  `bws secret list`.
+- Token format: `0.<org>.<env>.<client_id>:<client_secret>` — shown ONCE at
+  creation in the web vault (Secrets Manager → machine account → access tokens).
+- `bws secret create` has NO stdin/file input: `create KEY - PROJECT` stores the
+  literal string `"-"`. Pass values via `"$(cat file)"` — the literal command
+  text (kept in the exec harness's environ) then contains only the path, never
+  the value; it appears only transiently in the bws child's argv. Full pattern
+  and verification live in `~/tools/bws-backup-secrets.sh`.
+- bws gotchas (hit 2026-10-07): `secret get <id> -o json` returns an object
+  for one id but the shape has varied — normalize with
+  `jq 'if type=="array" then .[0].value else .value end'`; `jq -r` appends a
+  trailing newline, so use `jq -j` when hashing values for comparison;
+  values starting with `-` (e.g. `-----BEGIN OPENSSH PRIVATE KEY-----`) are
+  parsed as flags — put options first, then `--`, then positionals
+  (`bws secret create --note ... -o none -- KEY VALUE PROJECT`), otherwise
+  clap errors AND echoes the value in the error message.
+- 2026-10-07: backed up all on-disk secrets into project "developing today"
+  (`d370cd10-…`): `nix-cache.upload-secret`, `nix-cache.signing-key`,
+  `cachix.cachix-dhall`, `github-cli.hosts-yml`, `ssh.id-ed25519` — each
+  round-trip sha256-verified. The Cloudflare Worker secret UPLOAD_SECRET
+  (nix-cache worker) holds the same value as `nix-cache.upload-secret`.
+  The bws access token itself is deliberately NOT stored there.
+- 2026-10-07 ~03:30 CDT: Drew supplied the account-wide API token + R2 S3
+  creds. Stored in Bitwarden: `cloudflare.api-token-account-wide` (NEVER put
+  in Worker secrets/env — mint scoped tokens from it), `cloudflare.r2-access-key-id`,
+  `cloudflare.r2-secret-access-key`, `cloudflare.r2-endpoint`. NOTE 2026-10-07:
+  those pasted R2 creds are BROAD admin (token "weathered-breeze-ead0" carries
+  ~every permission group — "came from the global key"); kept in Bitwarden as
+  Drew's admin copy (renoted, NOT used by the worker). The worker uses a
+  DEDICATED bucket-scoped pair minted 2026-10-07: `cloudflare.r2-worker-api-token`
+  (raw token value), `cloudflare.r2-worker-access-key-id`,
+  `cloudflare.r2-worker-secret-access-key` (Object Read+Write on nix-cache-nars
+  only; S3 Access Key ID = token id, Secret Access Key = SHA-256(token value)).
+  Created via POST /accounts/{id}/tokens with resource
+  `com.cloudflare.edge.r2.bucket.<acct>_default_nix-cache-nars` and permission
+  groups Workers R2 Storage Bucket Item Read
+  (6a018a9f2fc74eb6b293b0c548f38b39) + Write
+  (2efd5506f9c8494dacb1fa10a3e7d5b6). Worker secrets
+  `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` set on the
+  nix-cache worker from those values. `UPLOAD_SECRET` ROTATED (old worker
+  value was unrecoverable — the local file had diverged); new value consistent
+  across Worker secret, `~/.config/nix-cache/upload-secret`, Bitwarden.
+  Presign flow verified end-to-end: presign 200 → signed R2 URL → PUT 200
+  (one 13-byte probe object left in the bucket; DELETE via hand-rolled SigV4
+  kept failing — use a real S3 client for cleanup if it matters).
+- Day-to-day token `cloudflare.api-token-day-to-day` (minted 2026-10-07, id
+  26b92e8c…): Workers Scripts/KV/R2/D1/Queues read+write + Workers Tail read,
+  scoped to account 234b866b… only. Use for routine wrangler/API work.
+- Inference token `cloudflare.api-token-ai-inference` (minted 2026-10-07, id
+  7746f234…): AI Gateway Read+Run + Workers AI Read+Write, account-scoped.
+  Live-tested OK (gateway list + embedding inference). For inference use.
+- `~/tools/cloudflare/wrangler-secret.py` — reads `{"token","name","value"}`
+  JSON from stdin, sets `CLOUDFLARE_API_TOKEN` transiently, pipes the value to
+  `wrangler secret put` (cwd `~/git/nix-cache`). Sends the value with NO
+  trailing newline: wrangler stores stdin bytes verbatim, and a stray `\n`
+  breaks `timingSafeEqual` checks and SigV4 signatures (hit 2026-10-07).
+- Cloudflare edge error **1010** blocks requests with non-browser User-Agents:
+  python-urllib's default UA gets 403 on workers.dev even for no-auth routes.
+  Use a browser UA header for worker/API test requests (hit 2026-10-07 —
+  this masqueraded as a "wrong upload secret" for an hour).
+
 ## Exec stdin vs heredoc (hit 2026-10-05)
 - The exec tool's `stdin` parameter CONFLICTS with shell heredocs (`python3 - <<'EOF'`): the heredoc wins and the `stdin` parameter content is silently dropped — the script runs seeing empty stdin, with no error. Three consecutive Cloudflare auth checks ran with an empty token because of this and reported "not authenticated".
 - Rule: when a script needs stdin (e.g. a secret), put the code in `python3 -c '...'` (no single quotes inside) and let the `stdin` parameter carry the secret. Never combine `<<'EOF'` with the `stdin` parameter.
