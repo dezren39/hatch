@@ -321,3 +321,7 @@ worth recording.
 ## init.sh recycle-straddle race (observed 2026-10-05)
 - init.sh decides "already initialized" from the per-boot marker file AT SCRIPT START. A recycle mid-run is not re-checked: the 14:11:51 CDT recycle fell inside this routine's 14:11:43–14:12:39 init.sh run, which still reported "already-initialized" against the OLD boot's (now-wiped) marker — the first full init on the new boot happened 9 min later at this run's 14:21:06 execution.
 - Harmless here: the sandbox-boot-init cron also keys on the per-boot marker, so the first init.sh execution after the recycle always does a full init; the straddling run just reports stale good news. Exposure window = one schedule interval. When triaging "already-initialized" lines in events.log against init.log START lines, check which boot_id each belongs to — a mismatch within ~10 min means a straddle, not a missed init.
+
+## init.sh interrupted mid-run on a fresh recycle (hit 2026-10-16)
+- The sandbox recycled ~7s into a scheduled run (boot 12:20:42 UTC, run started 12:20:34, init.sh launched 12:20:49): the exec dispatch died with "the service restarted while it was running" and init.sh left NO init.log trace (no START/END lines) — the interrupted invocation did nothing at all.
+- Detect: `/proc/sys/kernel/random/boot_id` differs from init-status's `boot_id`, and init.log's last line predates the boot. Fix: just re-run init.sh — it's idempotent; the fresh-boot full init ran clean (exit 0, 82s, END result=SUCCESS, 10572 store paths, mcpx unit restored+started). Nothing else needs repair.
