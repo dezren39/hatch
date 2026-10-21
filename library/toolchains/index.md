@@ -28,3 +28,4 @@ Cross-cutting sandbox facts that affect almost every tool (from TOOLS.md):
 - Python `urllib.request` honours the proxy env vars; `http.client` does not (direct TLS fails with SSL WRONG_VERSION_NUMBER).
 - The exec tool's `stdin` parameter conflicts with shell heredocs (`<<'EOF'` wins, stdin is silently dropped). When a secret must be fed via stdin, use `python3 -c '...'` with no heredoc.
 - Any unknown command is resolved by `~/tools/dispatcher.sh` (omnibin-backed `program@version` support via `/bin/bash` wrapper + `BASH_ENV=~/tools/shell-env.sh`). Exact-version misses fail loudly with exit 127 — never substituted.
+- [binary-backup.md](binary-backup.md) — standalone binaries to back up as-is (incl. bws), generated 2026-10-21

@@ -4,6 +4,12 @@
 - **The real browser is a platform-managed Chromium**, driven through the Muse browser tools — it is *not* a binary in this sandbox. Checks on 2026-10-21 found: no `chromium` / `chromium-browser` / `google-chrome` on PATH, nothing in `/usr/bin`, no `~/.cache/ms-playwright`, and **no Python `playwright` module installed** (`ModuleNotFoundError`). So: browser work = the managed browser; Playwright = **not installed locally** as of this check. Any future Playwright setup must start from an install step and be re-verified — do not assume the Python/Node Playwright from other machines exists here.
 - Browser windows: each browser task is a window with tabs; every window shares the default browser profile, so one sign-in serves every chat and scheduled job unless a window was opened in a named profile for another account. The user can watch and take over a live session; agent and user never drive it at the same time.
 
+
+## Install targets — Drew's decision, 2026-10-21
+- Chromium and Playwright **should be installed** on this machine as part of the toolchain set, so they are available if local browser automation is ever needed — but they are **optional, not a requirement**, and nothing depends on them (all current browser work goes through the platform-managed browser above).
+- Expected mode if installed: **headless only**.
+- Status: not installed, **not tested, and deliberately not investigated yet** (Drew, 2026-10-21: "we don't need to test that right now or put much thought into it"). When someone does install them, land browsers on persistent disk (`~/`) and add a dated verification entry to this doc.
+
 ## Download / Install (Playwright, if ever needed)
 - UNSOURCED / NOT DONE: no Playwright install has been performed or recorded on this sandbox. A future install would need to land browsers on persistent disk (`~/`), not `/tmp` or the overlay, and would need its own verification entry here before use.
 

@@ -28,3 +28,10 @@ tailscale ip       # expected: this device's tailnet address(es)
 ## Known quirks & what has NOT worked
 - `tailscale version` and `tailscale --version` both fail ("unrecognized subcommand" / "unexpected argument") — this is a wrapper, so don't script against upstream CLI behaviour, flags, or output formats.
 - Never conclude a tailnet service is down from a direct (non-proxy) connection attempt — that path cannot reach the tailnet at all here.
+
+## Keep a real CLI + API keys available — Drew's decision, 2026-10-21
+Tailscale is otherwise handled outside this sandbox, but Drew wants a Tailscale CLI kept installed here anyway, just in case it becomes useful — do not remove it as "unused". The reason to keep it (and to keep Tailscale API keys filed in Bitwarden Secrets Manager) is the control-plane work the full CLI/API enables on Drew's own machines and tailnet:
+- **Serve / Funnel** — expose a private local website or service publicly through the tailnet (Funnel is the public-exposure tool; Serve is tailnet-only).
+- **Route changes per host** — advertise/accept subnet routes, set a host up as a **subnet router or exit-node gateway** for other devices.
+- General tailnet administration (ACLs, device and route management) driven by API keys from the secrets manager rather than interactive logins.
+Caveat: none of that works through this sandbox's platform wrapper today (see top of this doc — `serve`/`funnel` unsupported here). This section records intent for Drew's machines and for API-driven work, not a verified sandbox capability.
