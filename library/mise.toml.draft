@@ -1,0 +1,96 @@
+# =============================================================================
+# DRAFT — OPTIONAL EXPERIMENT ONLY — NOT ADOPTED — DO NOT COMMIT AS LIVE CONFIG
+# =============================================================================
+# What this is: a sketch of what a mise-based bootstrap would look like for a
+# NIX-LESS, limited environment (borrowed laptop, minimal container, teammate
+# machine) where the sandbox's nix + omnibin dispatcher is unavailable.
+# Versions are taken from /home/hatch/library/toolchains/index.md, which were
+# verified live in the Muse sandbox on 2026-10-21.
+#
+# What this is NOT:
+#   - Not for the Muse sandbox itself. There, nix + the dispatcher already
+#     pin versions with loud failure on inexact requests; adding mise shims
+#     would create a second resolver fighting over PATH.
+#   - Not complete. Several documented tools have no confirmed mise registry
+#     entry (marked UNVERIFIED / OMITTED below) and several things in the
+#     index are not user-space tools at all (nix, systemd units, system
+#     users) — mise cannot install them in any environment.
+#   - Not secret-bearing. [env] below holds NO secrets and never may.
+#     Secrets live in Bitwarden Secrets Manager and are fetched by name at
+#     use time (see library/AGENTS.md, STRICT secrets rule).
+#
+# Intended use, if ever tried, in the nix-less environment:
+#   curl https://mise.run | sh            # or the pinned wrapper:
+#   # mise generate install-script --localize --write   (from a mise machine)
+#   cp mise.toml.draft mise.toml
+#   mise trust
+#   mise lock                             # generates mise.lock w/ checksums
+#   mise install --locked                 # reproducible installs thereafter
+# =============================================================================
+
+min_version = "2025.1.0"   # DRAFT placeholder — set to the mise release used
+                           # to generate the lockfile when actually tried.
+
+[tools]
+# --- Core / registry tools (versions verified in sandbox 2026-10-21) ---
+go     = "1.25.1"          # index: go 1.25.1 linux/amd64 (core tool)
+rust   = "1.98.1"          # index: cargo 1.98.1 via rustup "stable".
+                           # NOTE: mise's core rust is rustup under the hood;
+                           # lockfile records version only for core:rust.
+bun    = "1.4.2"           # index: bun 1.4.2 (core tool, archive+checksum)
+uv     = "0.12.16"         # index: uv 0.12.16 (registry/aqua)
+node   = "24"              # UNVERIFIED as a need — not in the sandbox index;
+                           # shown only to demonstrate a loose prefix request.
+                           # Pin exact or drop if unused.
+
+# GitHub CLI — index: gh 2.101.0, logged in as dezren39.
+# The aqua registry carries cli/cli; the credential-helper configuration
+# (never pin nix store paths — see toolchains/git.md) is NOT done by mise.
+"aqua:cli/cli" = "2.101.0"
+
+# Wrangler — index: wrangler 4.147.0. Wrangler is an npm package; Cloudflare
+# remains API/cf-first per Drew's rule, wrangler is fallback only.
+"npm:wrangler" = "4.147.0"
+
+# --- UNVERIFIED entries: no confirmed registry/backend entry was checked ---
+# Listed as comments so nobody assumes they install:
+#   bws 2.1.0 (Bitwarden Secrets Manager CLI) — distributed via
+#     github.com/bitwarden/sdk-sm releases; a "github:bitwarden/sdk-sm"
+#     backend entry might work but asset naming is unverified.
+#   cf 1.0.0-beta.20 (Cloudflare beta CLI) — no known mise entry; beta
+#     software, keep manual per toolchains/cloudflare-wrangler.md.
+#   op 2.41.0 (1Password CLI) — has GitHub releases (1Password/op) but no
+#     registry entry verified; also has no working sign-in workflow here yet.
+
+[settings]
+# Read .tool-versions if a project already carries one (asdf compatibility).
+# idiomatic_version_file_enable_tools = ["node", "python"]  # opt-in example
+
+[env]
+# NON-SECRET environment only. Anything secret is fetched from Bitwarden by
+# name at runtime — never written here, never committed.
+MISE_DRAFT_MARKER = "draft-experiment-not-adopted"
+
+[tasks.bootstrap-check]
+description = "DRAFT: verify the bootstrapped toolchain reports the pinned versions (read-only-ish; safe to re-run)"
+run = """
+go version
+cargo --version
+bun --version
+uv --version
+gh --version
+"""
+
+[tasks.doctor]
+description = "DRAFT: show which config files and versions mise resolved — the mise analogue of a verify pass"
+run = """
+mise config ls
+mise ls --current
+mise lock --dry-run
+"""
+
+# Deliberately absent: any task that installs system packages, creates users,
+# writes /etc, starts services, or links dotfiles. Those belong to the
+# environment's own bootstrap (init.sh / home-manager), not to this file.
+# Mise tasks are NOT checked for idempotency — keep any future task
+# re-runnable by construction, per the dotbot contract.
