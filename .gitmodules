@@ -1,0 +1,21 @@
+[submodule "repos/nix"]
+	path = repos/nix
+	url = https://github.com/dezren39/nix.git
+[submodule "repos/code"]
+	path = repos/code
+	url = https://github.com/developing-today/code.git
+[submodule "repos/opencode"]
+	path = repos/opencode
+	url = https://github.com/developing-today/opencode.git
+[submodule "repos/openchamber"]
+	path = repos/openchamber
+	url = https://github.com/developing-today/openchamber.git
+[submodule "repos/zettel-dezren39"]
+	path = repos/zettel-dezren39
+	url = https://github.com/dezren39/zettel.git
+[submodule "repos/zettel-developing-today"]
+	path = repos/zettel-developing-today
+	url = https://github.com/developing-today/zettel.git
+[submodule "repos/dezren39"]
+	path = repos/dezren39
+	url = https://github.com/dezren39/dezren39.git

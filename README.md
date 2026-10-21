@@ -30,6 +30,10 @@ This is the agent's persistent home directory (`/home/hatch`). It survives sandb
 └── memory/ dreams/     # Agent memory (ignored)
 ```
 
+## Library
+
+Working docs live in [library/](library/README.md): toolchain setup-cycle docs (download/install/secrets/configure/test for nix, git, bws, Cloudflare, Go, Rust, and more), the AI-plans and hardware registers, a redacted inventory summary, how Drew and Muse work together, and the submodule registry pattern (`repos/`, materialized by `scripts/link-submodules.sh`). Private counterpart: `dezren39/hatch-personal` → `library/`.
+
 ## Key Concepts
 
 - **Boot vs recycle**: See [notes/architecture/boot-lifecycle.md](notes/architecture/boot-lifecycle.md)
