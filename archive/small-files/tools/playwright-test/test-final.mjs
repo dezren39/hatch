@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true, proxy: { server: 'http://127.0.0.1:18081' } });
+const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+const page = await ctx.newPage();
+const r = await page.goto('https://example.com', { timeout: 25000 });
+console.log('status:', r.status(), '| title:', await page.title());
+const body = await page.evaluate(() => document.body.innerText.slice(0, 120).replace(/\n/g, ' | '));
+console.log('body text:', body);
+await page.screenshot({ path: '/home/hatch/workspace/library-build/playwright-test/example-com.png' });
+console.log('screenshot saved');
+await browser.close();

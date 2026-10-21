@@ -1,0 +1,5 @@
+[v1]
+"attic-server 0.1.0 (git+https://github.com/zhaofengli/attic#7a19204df10d606c5070e6bb72615c3461900c05)" = [
+    "atticadm",
+    "atticd",
+]
