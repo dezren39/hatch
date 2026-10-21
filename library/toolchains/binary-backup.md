@@ -49,3 +49,7 @@ Most entries in `~/tools/bin` are symlinks/dispatcher stubs that resolve reprodu
 
 Toolchains installed as trees (back up the tree or reinstall via its doc): Go (~/tools/go), Rust (~/tools/cargo + ~/tools/rustup), wrangler (~/tools/wrangler), nix (persistent store — see nix.md, snapshot via ~/tools/nix-snapshot.sh).
 Chromium + Playwright: install targets only, optional/headless — see chromium-playwright.md. Tailscale CLI: keep installed — see tailscale.md.
+
+## Turso CLI provenance (resolved 2026-10-21)
+
+The turso binary originally 'just existed' because it was a dispatcher/omnibin stub (Nix build of turso-cli 1.0.30), auto-created on first invocation — never a deliberate install. It has since been replaced with the official install (`get.tur.so/install.sh`, archived in `archive/install-scripts/`): real binary at `~/.turso/turso` (**v1.0.34**), `~/tools/bin/turso` now symlinks to it, existing `~/.config/turso/settings.json` worked unchanged (auth whoami = dezren39). Sandbox gotchas for any reinstall: the official script needs `TAR_OPTIONS=--no-same-owner` (sandbox denies chown, same quirk class as the Nix installer), it performs NO checksum verification, and it always installs 'latest' with no pinning — a reinstall silently upgrades.
