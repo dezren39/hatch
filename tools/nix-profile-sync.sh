@@ -9,6 +9,11 @@
 # Idempotent. Run on boot via init.sh and automatically after `nix profile`
 # mutations (hooked in the /usr/local/bin/nix wrapper).
 set -u
+# HOME may be unset when invoked from a HOME-less env (systemd-run / env -i /
+# cron variants) — under `set -u` that killed the sync with "HOME: unbound
+# variable" (2026-10-22), leaving every profile binary unlinked and the
+# mcpx/opencode services looping 203/EXEC. Default it.
+HOME="${HOME:-/home/hatch}"
 PROFILE_BIN="$HOME/.nix-profile/bin"
 TARGET_DIR="/usr/local/bin"
 mkdir -p "$TARGET_DIR"
