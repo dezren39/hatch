@@ -15,6 +15,21 @@ fi
 
 cp "$SRC" "$UNIT"
 systemctl daemon-reload
+
+# A client can auto-spawn an idle-exit mcpx daemon on the same socket before
+# this unit starts (observed 2026-10-24 recycle: orphan PID 9964, started
+# during init, blocked the unit — "a daemon is already listening" crash-loop,
+# init FAILURES=1). If the unit is not the running daemon, stop the orphan
+# first so the unit can own the socket. Guarded by is-active: when the unit
+# itself is already running we never touch its daemon.
+if ! systemctl is-active --quiet mcpx.service; then
+  if timeout 10 /usr/local/bin/mcpx status >/dev/null 2>&1; then
+    echo "install-mcpx-service: stopping pre-existing non-systemd mcpx daemon"
+    timeout 15 /usr/local/bin/mcpx stop || true
+    sleep 1
+  fi
+fi
+
 systemctl enable --now mcpx.service
 sleep 2
 if systemctl is-active --quiet mcpx.service; then
