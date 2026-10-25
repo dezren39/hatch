@@ -1,0 +1,120 @@
+{
+  "drainSeconds": 5,
+  "endpointDir": "/home/hatch/.local/state",
+  "healthTimeoutSeconds": 60,
+  "proxies": [
+    {
+      "canonicalPort": 18743,
+      "command": [
+        "/bin/bash",
+        "/home/hatch/tools/agy-proxy-start.sh"
+      ],
+      "hashFiles": [
+        "/home/hatch/tools/agy-proxy/agy-proxy.mjs",
+        "/home/hatch/tools/agy-proxy/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/agy-proxy.build-stamp"
+      ],
+      "name": "agy-proxy",
+      "portEnv": "AGY_PROXY_PORT",
+      "strategy": "swap"
+    },
+    {
+      "canonicalPort": 18748,
+      "command": [
+        "/bin/bash",
+        "/home/hatch/tools/commandcode-proxy-start.sh"
+      ],
+      "hashFiles": [
+        "/home/hatch/tools/commandcode-proxy/commandcode-proxy.mjs",
+        "/home/hatch/tools/commandcode-proxy/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/commandcode-proxy.build-stamp"
+      ],
+      "name": "commandcode-proxy",
+      "portEnv": "COMMANDCODE_PROXY_PORT",
+      "strategy": "swap"
+    },
+    {
+      "canonicalPort": 18747,
+      "command": [
+        "/bin/bash",
+        "/home/hatch/tools/muse-proxy-start.sh"
+      ],
+      "hashFiles": [
+        "/home/hatch/tools/muse-proxy/muse-proxy.mjs",
+        "/home/hatch/tools/muse-proxy/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/muse-proxy.build-stamp"
+      ],
+      "name": "muse-proxy",
+      "portEnv": "MUSE_PROXY_PORT",
+      "strategy": "swap"
+    },
+    {
+      "canonicalPort": 18744,
+      "command": [
+        "/usr/bin/node",
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs"
+      ],
+      "env": {
+        "RELAY_NAME": "codex-proxy-relay",
+        "RELAY_PROXY_HOST": "hatch-egress-proxy",
+        "RELAY_PROXY_PORT": "3130",
+        "RELAY_TARGET_HOST": "100.99.113.103",
+        "RELAY_TARGET_PORTS": "18744"
+      },
+      "hashFiles": [
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs",
+        "/home/hatch/tools/proxy-supervisor/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/config.json"
+      ],
+      "name": "codex-proxy",
+      "portEnv": "RELAY_LISTEN_PORT",
+      "strategy": "inplace"
+    },
+    {
+      "canonicalPort": 18745,
+      "command": [
+        "/usr/bin/node",
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs"
+      ],
+      "env": {
+        "RELAY_NAME": "antigravity-ls-proxy-relay",
+        "RELAY_PROXY_HOST": "hatch-egress-proxy",
+        "RELAY_PROXY_PORT": "3130",
+        "RELAY_TARGET_HOST": "100.99.113.103",
+        "RELAY_TARGET_PORTS": "18745"
+      },
+      "hashFiles": [
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs",
+        "/home/hatch/tools/proxy-supervisor/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/config.json"
+      ],
+      "name": "antigravity-ls-proxy",
+      "portEnv": "RELAY_LISTEN_PORT",
+      "strategy": "inplace"
+    },
+    {
+      "canonicalPort": 18746,
+      "command": [
+        "/usr/bin/node",
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs"
+      ],
+      "env": {
+        "RELAY_NAME": "design-code-proxy-relay",
+        "RELAY_PROXY_HOST": "hatch-egress-proxy",
+        "RELAY_PROXY_PORT": "3130",
+        "RELAY_TARGET_HOST": "100.99.113.103",
+        "RELAY_TARGET_PORTS": "18746"
+      },
+      "hashFiles": [
+        "/home/hatch/tools/proxy-supervisor/proxy-relay.mjs",
+        "/home/hatch/tools/proxy-supervisor/proxy-port.mjs",
+        "/home/hatch/tools/proxy-supervisor/config.json"
+      ],
+      "name": "design-code-proxy",
+      "portEnv": "RELAY_LISTEN_PORT",
+      "strategy": "inplace"
+    }
+  ],
+  "stateDir": "/home/hatch/.local/state/proxy-supervisor",
+  "systemdRun": "system"
+}
