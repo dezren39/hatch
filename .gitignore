@@ -99,3 +99,46 @@ tools/dispatcher/cache/
 # mcp-remote OAuth token cache (secrets, machine-local)
 .mcp-auth/
 /notes/TODO.md
+
+# === Secrets & tool-state dotdirs (2026-10-25) ===
+# Secret values on disk — never track; restored from Bitwarden by tooling.
+/tools/secrets.d/
+
+# Credential-handling scripts — private-only by Drew's classification
+# (copies already preserved in dezren39/hatch-personal).
+/tools/bws-backup-secrets.sh
+/tools/bws-env.sh
+/tools/bws-receive-token.sh
+/tools/bws-store-values.py
+/tools/cred-receiver.py
+/tools/supabase-exec.py
+/tools/turso-exec.py
+/tools/op-env.sh
+/tools/cloudflare/wrangler-secret.py
+
+# Tool-state dotdirs/files: live tokens, session state, logs, caches.
+# Ignored wholesale; audited pure-config files unignored individually below.
+.claude.json
+.zcompdump
+.dbus/
+.supabase/
+.commandcode/
+.opencode-mem/
+.turso/
+.wrangler/
+
+# --- .claude/: all ignored except audited clean config (settings + hooks) ---
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/codedb-block-legacy.sh
+!.claude/hooks/codedb-warmup.sh
+
+# --- .codex/: all ignored except audited clean config ---
+.codex/*
+!.codex/config.toml
+
+# --- .gemini/: all ignored except audited clean config ---
+.gemini/*
+!.gemini/settings.json

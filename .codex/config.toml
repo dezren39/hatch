@@ -1,0 +1,7 @@
+[mcp_servers.codedb]
+command = "/home/hatch/bin/codedb"
+args = ["mcp"]
+startup_timeout_sec = 30
+
+[mcp_servers.deepwiki]
+url = "https://mcp.deepwiki.com/mcp"
