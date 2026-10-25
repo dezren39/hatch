@@ -3,6 +3,10 @@
 # Restores ephemeral state (system users, /nix symlink, wrappers, ...)
 # after the sandbox is recycled. Idempotent: safe to run any time; skips work
 # when the marker matches the current boot AND all restores are in place.
+# Hardened 2026-10-25 (Drew: "fix init to not crash"): every step runs
+# under a per-step timeout, critical service restores run before all
+# heavy/telemetry work, and no single command may block the sequence —
+# see run_step and the deferred-telemetry block below.
 set -u
 LOG_DIR=/home/hatch/logs
 LOG=$LOG_DIR/init.log
@@ -30,31 +34,29 @@ if [ -f "$STATUS" ]; then
   PREV_END=$(grep '^end_datetime=' "$STATUS" 2>/dev/null | cut -d= -f2- || echo "none")
 fi
 
-# --- System snapshot ---
+# --- System snapshot (cheap fields only) ---
+# The expensive telemetry — nix-persist size (du over the ~58G tree) and
+# the cache.nixos.org latency probe — is measured AFTER the restore
+# steps (see "Deferred telemetry" below). An unbounded du here stalled
+# the 2026-10-25 16:07 boot for ~40 min before any step ran, leaving
+# every proxy port dark; even bounded, telemetry has no business ahead
+# of the critical restores. Defaults are set now so the STATUS/JSONL
+# keys always exist with truthful values.
 KERNEL=$(uname -r 2>/dev/null || echo unknown)
 OS_VER=$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo unknown)
 CPU_COUNT=$(nproc 2>/dev/null || echo unknown)
 MEM_TOTAL=$(free -m 2>/dev/null | awk '/^Mem:/{print $2"M"}' || echo unknown)
 DISK_HOME=$(df -h /home/hatch 2>/dev/null | awk 'NR==2{print $4" free of "$2}' || echo unknown)
-NIX_SIZE=$(du -sh /home/hatch/nix-persist 2>/dev/null | cut -f1 || echo unknown)
-
-# --- Network check (TCP latency, ICMP blocked) ---
+NIX_SIZE="unknown"
 NET_OK="no"
 NET_LAT="null"
-if timeout 10 curl -sI https://cache.nixos.org/ 2>/dev/null | head -1 | grep -q "200"; then
-  NET_OK="yes"
-  # 3 quick samples for latency
-  NET_LAT=$(for i in 1 2 3; do
-    curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0"
-  done | awk '$1>0{sum+=$1;n++} END{if(n>0)printf "%.3f", sum/n; else print "null"}')
-  [ "$NET_LAT" = "null" ] || NET_LAT="$NET_LAT"
-fi
 
 nix_works() {
   # Use the /usr/local/bin wrapper (sets LD_PRELOAD for the symlink shim),
   # not the raw binary path which trips nix's symlink guard.
+  # Bounded: a wedged store lock must not stall the fast-path check.
   [ -x /usr/local/bin/nix ] \
-    && /usr/local/bin/nix eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
+    && timeout 30 /usr/local/bin/nix eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
 }
 
 # --- Personal-repo symlink guard (~/hatch-personal, private) ---
@@ -114,49 +116,84 @@ fi
   echo "[$START_DT] init: START boot_id=$BOOT_ID boot_time='$BOOT_TIME'"
   echo "[$START_DT] init: prev_boot_id=$PREV_BOOT_ID prev_end='$PREV_END'"
   echo "[$START_DT] init: sys kernel=$KERNEL os='$OS_VER' cpus=$CPU_COUNT mem=$MEM_TOTAL"
-  echo "[$START_DT] init: sys disk_home='$DISK_HOME' nix_persist=$NIX_SIZE net_cache_nixos_org=$NET_OK"
+  echo "[$START_DT] init: sys disk_home='$DISK_HOME' nix_persist=deferred net_cache_nixos_org=deferred"
 } >> "$LOG"
 
 FAILURES=0
 
-run_step() { # name, then command + args
-  local name="$1"; shift
+# run_step name budget-seconds command...
+# Every step runs under `timeout`: a hung step is killed at its budget,
+# logged as FAILED, and the sequence CONTINUES to the END marker. Before
+# this, a single wedged step held init (and its flock) forever and no
+# later restore ran — the failure shape behind the dark proxy ports on
+# 2026-10-25. Budgets are ceilings, not targets: healthy steps take
+# seconds; the large ones cover cold-cache network/store work under
+# load. A timeout counts as a failure, so result= stays truthful and
+# the boot marker is not written (the next poll retries).
+run_step() {
+  local name="$1" budget="$2"; shift 2
   local step_start=$(date +%s)
-  if "$@" >>"$LOG" 2>&1; then
-    local step_dur=$(($(date +%s) - step_start))
-    echo "[$START_DT] init: step '$name' OK (${step_dur}s)" >> "$LOG"
+  timeout --signal=TERM --kill-after=15 "$budget" "$@" >>"$LOG" 2>&1
+  local code=$?
+  local step_dur=$(($(date +%s) - step_start))
+  local now=$(date '+%Y-%m-%d %H:%M:%S %Z')
+  if [ "$code" -eq 0 ]; then
+    echo "[$now] init: step '$name' OK (${step_dur}s)" >> "$LOG"
+  elif [ "$code" -eq 124 ]; then
+    echo "[$now] init: step '$name' FAILED (timeout after ${budget}s budget, ran ${step_dur}s) — see output above" >> "$LOG"
+    FAILURES=$((FAILURES+1))
   else
-    local code=$?
-    local step_dur=$(($(date +%s) - step_start))
-    echo "[$START_DT] init: step '$name' FAILED (exit $code, ${step_dur}s) — see output above" >> "$LOG"
+    echo "[$now] init: step '$name' FAILED (exit $code, ${step_dur}s) — see output above" >> "$LOG"
     FAILURES=$((FAILURES+1))
   fi
 }
 
-run_step "nix-ensure" bash /home/hatch/tools/nix-ensure.sh
-run_step "nix-wrapper" bash /home/hatch/tools/install-nix-wrapper.sh
-run_step "nix-profile-sync" bash /home/hatch/tools/nix-profile-sync.sh
-run_step "mcpx-servers" bash /home/hatch/tools/install-mcpx-servers.sh
-run_step "mcpx-service" bash /home/hatch/tools/install-mcpx-service.sh
-run_step "opencode-service" bash /home/hatch/tools/install-opencode-service.sh
-run_step "board-agent-service" bash /home/hatch/tools/install-board-agent-service.sh
-run_step "muse-proxy-service" bash /home/hatch/tools/install-muse-proxy-service.sh
-run_step "agy-proxy-service" bash /home/hatch/tools/install-agy-proxy-service.sh
-run_step "commandcode-proxy-service" bash /home/hatch/tools/install-commandcode-proxy-service.sh
-run_step "claude-code-proxy-service" bash /home/hatch/tools/install-claude-code-proxy-service.sh
-run_step "proxy-supervisor-service" bash /home/hatch/tools/install-proxy-supervisor-service.sh
-run_step "bash-wrapper" bash /home/hatch/tools/install-bash-wrapper.sh
-run_step "go-check" bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
-run_step "rust-check" bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'
+# Critical path first: nix plumbing, then every service installer
+# (units + opencode-serve + mcpx + proxies + supervisor), then shell
+# plumbing. Heavy non-essentials are deferred below the services.
+run_step "nix-ensure" 600 bash /home/hatch/tools/nix-ensure.sh
+run_step "nix-wrapper" 120 bash /home/hatch/tools/install-nix-wrapper.sh
+run_step "nix-profile-sync" 120 bash /home/hatch/tools/nix-profile-sync.sh
+run_step "mcpx-service" 180 bash /home/hatch/tools/install-mcpx-service.sh
+run_step "opencode-service" 300 bash /home/hatch/tools/install-opencode-service.sh
+run_step "board-agent-service" 180 bash /home/hatch/tools/install-board-agent-service.sh
+run_step "muse-proxy-service" 180 bash /home/hatch/tools/install-muse-proxy-service.sh
+run_step "agy-proxy-service" 180 bash /home/hatch/tools/install-agy-proxy-service.sh
+run_step "commandcode-proxy-service" 180 bash /home/hatch/tools/install-commandcode-proxy-service.sh
+run_step "claude-code-proxy-service" 180 bash /home/hatch/tools/install-claude-code-proxy-service.sh
+run_step "proxy-supervisor-service" 420 bash /home/hatch/tools/install-proxy-supervisor-service.sh
+run_step "bash-wrapper" 120 bash /home/hatch/tools/install-bash-wrapper.sh
+# Deferred heavy work: mcpx-servers performs unpinned network installs
+# (npm/go/gh/Chrome downloads; 119s under load on 2026-10-25) and used
+# to sit ahead of every service restore. mcpx-service above skips
+# quietly if the daemon binary is absent, and services-verify (last)
+# re-runs its installer, so a cold mcpx still converges within the run.
+run_step "mcpx-servers" 900 bash /home/hatch/tools/install-mcpx-servers.sh
+run_step "go-check" 60 bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
+run_step "rust-check" 60 bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'
 # (future restore steps go here as run_step lines)
-run_step "services-verify" bash /home/hatch/tools/verify-services.sh
+run_step "services-verify" 900 bash /home/hatch/tools/verify-services.sh
+
+# --- Deferred telemetry (measured only after every restore step) ---
+# Every command bounded; the values land in STATUS/JSONL under the
+# same keys as always (nix_persist_size, net_cache, quota, ...). See
+# the snapshot comment near the top for why this no longer runs first.
+NIX_SIZE=$(timeout 60 du -sh /home/hatch/nix-persist 2>/dev/null | cut -f1)
+[ -n "$NIX_SIZE" ] || NIX_SIZE=unknown
+if timeout 10 curl -sI https://cache.nixos.org/ 2>/dev/null | head -1 | grep -q "200"; then
+  NET_OK="yes"
+  # 3 quick samples for latency
+  NET_LAT=$(for i in 1 2 3; do
+    curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0"
+  done | awk '$1>0{sum+=$1;n++} END{if(n>0)printf "%.3f", sum/n; else print "null"}')
+fi
 
 # --- Post-init health snapshot ---
-NIX_VERSION=$(nix --version 2>/dev/null || echo "nix_broken")
-STORE_PATHS=$(ls /nix/store 2>/dev/null | wc -l || echo 0)
-PROFILE_PKGS=$(ls /nix/var/nix/profiles/default/bin 2>/dev/null | wc -l || echo 0)
+NIX_VERSION=$(timeout 15 nix --version 2>/dev/null || echo "nix_broken")
+STORE_PATHS=$(timeout 30 ls /nix/store 2>/dev/null | wc -l || echo 0)
+PROFILE_PKGS=$(timeout 30 ls /nix/var/nix/profiles/default/bin 2>/dev/null | wc -l || echo 0)
 
-QUOTA=$(/opt/hatch/bin/subscription-status status 2>/dev/null | tr '\n' '; ' || echo "quota query failed")
+QUOTA=$(timeout 30 /opt/hatch/bin/subscription-status status 2>/dev/null | tr '\n' '; ' || echo "quota query failed")
 
 END_DT=$(date '+%Y-%m-%d %H:%M:%S %Z')
 END_EPOCH=$(date +%s)
@@ -169,7 +206,7 @@ ATM_DIR=/home/hatch/hatch-personal/scripts/airthings-monitor
 if [ -x "$ATM_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet airthings-monitor.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring airthings-monitor timer" >> "$LOG"
-    "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    timeout 120 "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
   fi
 fi
 
@@ -179,7 +216,18 @@ FU_DIR=/home/hatch/hatch-personal/scripts/fleet-units
 if [ -x "$FU_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet init-ensure.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet units" >> "$LOG"
-    "$FU_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    timeout 120 "$FU_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
+# --- Fleet-feed collector: reinstall systemd units if missing ---
+# Same pattern as above; the units + installer live in the pm-feed clone
+# (developing-today/code#903).
+FFC_DIR=/home/hatch/git/pm-feed/pm-stack/aggregator
+if [ -x "$FFC_DIR/scripts/install-collector-units.sh" ]; then
+  if ! systemctl is-active --quiet fleet-feed-collector.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet-feed collector timer" >> "$LOG"
+    timeout 120 "$FFC_DIR/scripts/install-collector-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
   fi
 fi
 
@@ -201,7 +249,7 @@ if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES
   echo "net_cache=$NET_OK"
   echo "quota=$QUOTA"
 } > "$STATUS"
-echo "[$END_DT] init: END result=$RESULT init_secs=$INIT_SECS nix=$NIX_VERSION store_paths=$STORE_PATHS profile_bins=$PROFILE_PKGS quota=[$QUOTA]" >> "$LOG"
+echo "[$END_DT] init: END result=$RESULT init_secs=$INIT_SECS nix=$NIX_VERSION store_paths=$STORE_PATHS profile_bins=$PROFILE_PKGS nix_persist=$NIX_SIZE net_cache=$NET_OK net_lat_s=$NET_LAT quota=[$QUOTA]" >> "$LOG"
 
 # --- Compact JSON telemetry (one line per boot, machine-parseable) ---
 JSONL=$LOG_DIR/init.jsonl
