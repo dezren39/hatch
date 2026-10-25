@@ -10,6 +10,13 @@ STATUS=$LOG_DIR/init-status
 MARKER=$LOG_DIR/.init-boot-id
 mkdir -p "$LOG_DIR"
 
+# --- Concurrency backstop: only one init at a time (Phase A, 2026-10-25) ---
+exec 9>"$LOG_DIR/.init.lock"
+if ! flock -n 9; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: another init already running, exiting" >> "$LOG"
+  exit 0
+fi
+
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
 BOOT_TIME=$(uptime -s 2>/dev/null || echo unknown)
 START_DT=$(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -136,6 +143,7 @@ run_step "board-agent-service" bash /home/hatch/tools/install-board-agent-servic
 run_step "muse-proxy-service" bash /home/hatch/tools/install-muse-proxy-service.sh
 run_step "agy-proxy-service" bash /home/hatch/tools/install-agy-proxy-service.sh
 run_step "commandcode-proxy-service" bash /home/hatch/tools/install-commandcode-proxy-service.sh
+run_step "claude-code-proxy-service" bash /home/hatch/tools/install-claude-code-proxy-service.sh
 run_step "proxy-supervisor-service" bash /home/hatch/tools/install-proxy-supervisor-service.sh
 run_step "bash-wrapper" bash /home/hatch/tools/install-bash-wrapper.sh
 run_step "go-check" bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
@@ -162,6 +170,16 @@ if [ -x "$ATM_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet airthings-monitor.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring airthings-monitor timer" >> "$LOG"
     "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
+# --- Fleet units: reinstall systemd units if missing ---
+# Same pattern as Airthings above; the units live in the persistent repo.
+FU_DIR=/home/hatch/hatch-personal/scripts/fleet-units
+if [ -x "$FU_DIR/install.sh" ]; then
+  if ! systemctl is-active --quiet init-ensure.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet units" >> "$LOG"
+    "$FU_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
   fi
 fi
 
