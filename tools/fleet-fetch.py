@@ -17,7 +17,10 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-HOME = os.path.expanduser("~")
+# Anchor on the real home, NOT $HOME: under systemd HOME=/root, which broke
+# gh auth lookup and every path below (first timer fires failed silently;
+# interactive runs masked it). /home/hatch is the durable home on this box.
+HOME = "/home/hatch"
 SUPABASE_EXEC = os.path.join(HOME, "tools", "supabase-exec.py")
 LOG_FILE = os.path.join(HOME, "logs", "fleet-fetch.log")
 SQL_TMPDIR = os.path.join(HOME, "tmp")  # /tmp is a small tmpfs on this box
