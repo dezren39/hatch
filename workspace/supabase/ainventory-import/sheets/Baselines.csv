@@ -1,8 +1,0 @@
-benchmark_version_key,baseline_class,target_points,anchor_family,anchor_effort,rationale,editable
-AA|v4.3.2,low,30,GPT-6 Luna,medium,Usable general coding threshold around capable-mid tier.,yes
-AA|v4.3.2,mid,40,Gemini 3.8 Flash,medium,Strong general threshold; cheap-but-limited models start failing here.,yes
-AA|v4.3.2,mid-high,45,Muse Spark 1.3,xhigh,High capability while retaining practical speed/value.,yes
-AA|v4.3.2,frontier,52,Claude Sonnet 5.5,xhigh,Frontier-lite threshold on current scale.,yes
-AA|v4.3.2,example-50,50,,,Requested example target.,yes
-AA|v4.3.2,example-65,65,,,Above current scale; retained for future leveled benchmarks.,yes
-AA|v4.3.2,example-80,80,,,Above current scale; retained for future leveled benchmarks.,yes

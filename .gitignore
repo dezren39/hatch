@@ -83,6 +83,14 @@ workspace/*
 !workspace/supabase/
 !workspace/supabase/**
 workspace/supabase/**/__pycache__/
+# Private-only per workspace policy 2026-10-21 (infrastructure identifiers /
+# personal research corpus) — canonical copies in hatch-personal
+# workspace/imported/2026-10-25/supabase/. Re-ignored AFTER the negations
+# above so these paths stay out of the public repo (audit 2026-10-25).
+workspace/supabase/ainventory-import/sheets/
+workspace/supabase/ainventory-import/source/
+workspace/supabase/ainventory-import/SOURCE_SUMMARY.json
+workspace/supabase/muse-dev/backup/config.json
 go/
 
 # === Platform docs (Meta maintains them, but we track them to see changes) ===

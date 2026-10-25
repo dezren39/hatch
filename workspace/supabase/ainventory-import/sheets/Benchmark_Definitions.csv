@@ -1,3 +1,0 @@
-benchmark_name,score_direction,score_unit,primary_use,versioning_note,source
-Artificial Analysis Intelligence Index,higher_better,index points,cross-model intelligence/value,Raw scores across versions are not assumed directly comparable; use empirical version crosswalk factors.,https://artificialanalysis.ai/evaluations/artificial-analysis-intelligence-index
-Artificial Analysis Coding Agent Index,higher_better,index points (0–100 style),Coding-agent software engineering and repository-task performance,"v1.5 is the equal-weight mean of DeepSWE v1.1, Terminal-Bench 4.0, and SWE-Atlas-QnA. Keep separate from the AA Intelligence Index; no cross-index version factor or score equivalence.",https://artificialanalysis.ai/methodology/coding-agents-benchmarking

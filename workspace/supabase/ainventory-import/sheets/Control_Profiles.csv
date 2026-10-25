@@ -1,8 +1,0 @@
-Profile,Target,IntelWeight,SpeedWeight,StatusFilter,AvailabilityFilter,Description
-Default,40,0.5,0.5,Contender+Close,Current,Balanced current shortlist
-Smart,40,0.75,0.25,Contender+Close,Current,Prefer intelligence above usability bar
-Speed,35,0.25,0.75,Contender+Close,Current,Prefer speed/iteration throughput
-Frontier,45,0.85,0.15,Contender,Current,Correctness-heavy frontier board
-Cheap,30,0.4,0.6,Contender+Close,Current,Cheap workers with escalation expected
-Reviewer,40,0.7,0.3,Contender+Close,Current,Reviewer/judgment-biased
-All,0,0.5,0.5,All,All,No editorial filtering
