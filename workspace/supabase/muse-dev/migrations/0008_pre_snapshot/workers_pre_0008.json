@@ -1,0 +1,210 @@
+[
+  {
+    "id": "bench",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T16:00:01.748528+00:00",
+    "display_name": "Server-side bench",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "engineering",
+    "role": "build",
+    "status": "idle",
+    "created_at": "2026-10-21T03:26:45.893792+00:00",
+    "display_name": "Engineering \u2014 build / fix",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "finance",
+    "role": "money",
+    "status": "idle",
+    "created_at": "2026-10-21T03:26:45.893792+00:00",
+    "display_name": "Finance \u2014 money watch",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-01",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 1",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-02",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 2",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-03",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 3",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-04",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 4",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-05",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 5",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-06",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 6",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-07",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 7",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-08",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 8",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-09",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 9",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-10",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 10",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-11",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 11",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-12",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 12",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-13",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 13",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-14",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 14",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-15",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 15",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-16",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 16",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-17",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 17",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-18",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 18",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-19",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 19",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "lt-20",
+    "role": "loadtest",
+    "status": "offline",
+    "created_at": "2026-10-21T15:56:52.926588+00:00",
+    "display_name": "Load test clone 20",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "muse",
+    "role": "coordinator",
+    "status": "idle",
+    "created_at": "2026-10-21T03:26:45.893792+00:00",
+    "display_name": "Muse (chief of staff)",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "rnd",
+    "role": "research",
+    "status": "idle",
+    "created_at": "2026-10-21T03:26:45.893792+00:00",
+    "display_name": "R&D \u2014 research",
+    "last_heartbeat_at": null
+  },
+  {
+    "id": "sentinel",
+    "role": "intake",
+    "status": "idle",
+    "created_at": "2026-10-21T03:26:45.893792+00:00",
+    "display_name": "Sentinel \u2014 intake / triage",
+    "last_heartbeat_at": null
+  }
+]

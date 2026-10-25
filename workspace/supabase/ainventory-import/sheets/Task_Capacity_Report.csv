@@ -1,0 +1,24 @@
+Coding task capacity | 20 October 2026,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+
+"Compare quality, cost AND runtime. Coding Agent Index v1.5 below; general AAII v4.3.2 is a separate worksheet and cannot be mixed with CAI scores.",,,,,,,,,,,,,
+Budgets are USD ceilings for one month. API attempts = FLOOR(budget / measured average task cost). They are not guaranteed solved tasks; score is not success probability.,,,,,,,,,,,,,
+"Subscription rows use ONE eligible plan. Unspent money is retained. No account stacking, invented top-ups, or linear subscription quota scaling.",,,,,,,,,,,,,
+OpenCode: per-model caps; 20%/5h and50%/week. Context tiers and peak/off-peak rows share the same underlying model cap. Do not sum them.,,,,,,,,,,,,,
+Muse High15/mo includes Wonder; Power50/mo adds WonderFull. Both CLI-only. Numerical full-task quotas cannot be inferred from prompts/5h.,,,,,,,,,,,,,
+"OpenDesign Design Plan credits are shared and model-weighted. Premium wallet is separate; off-peak/free promotions may be app-only, so not assumed in external CLI estimates.",,,,,,,,,,,,,
+"AA current pages disagree on Muse Wonder64/$8.04 vs63/$8.05 and Spark cost. Uses Codex-vs-Muse snapshot, retains discrepancy. WonderFull $0 is a missing-price placeholder.",,,,,,,,,,,,,
+Current DeepSeekV4.1 uses archived AAII workload repriced for peak/off-peak. Older CAI V4Flash0731/V4Pro0813 are explicitly historical; not a current snapshot comparison.,,,,,,,,,,,,,
+"ChatGPT/Claude numeric subscription counts are historical third-party scenarios from Oct5, not official quotas or a fresh measurement. See evidence column.",,,,,,,,,,,,,
+"160-hour capacity is a runtime scenario, not a provider quota. Go_General_Task_Capacity gives tariff-ratio bounds; all four budgets afford Go/Plus, with unused cash retained.",,,,,,,,,,,,,
+
+
+Model / effort,CAI,USD/task,Min/task,$60 tasks,$90 tasks,$120 tasks,$180 tasks,Basis
+GPT-6.1 Sol (medium),61,0.7,10.9,85,128,171,257,API workload estimate
+GPT-6.1 Sol (xhigh),63,1.04,15.5,57,86,115,173,API workload estimate
+Sonnet 5.5 (xhigh),63,3.33,27,18,27,36,54,API workload estimate
+Sonnet 5.5 (max),68,14.19,90,4,6,8,12,API workload estimate
+Opus 5.5 (max),66,13.04,66,4,6,9,13,API workload estimate
+GPT-6 Luna (max),41,0.18,21.4,333,500,666,1000,API workload estimate
+Muse Wonder (max),64,8.04,22.4,7,11,14,22,API workload estimate
+Muse Wonder Full (max),68,N/A,28.8,,,,,Power50 subscription; API N/A

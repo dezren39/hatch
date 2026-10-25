@@ -1,0 +1,16 @@
+Curated Current Contenders & Near-Misses,,,,,,,,,,,,,,,,
+
+Family,Status,Tier now,Best observed AA,Best speed t/s,Best $/task,Best measured sec/task,Current/prime role,Primary caveat,Mechanical,Explore,Planning,Architecture,Complex impl,Reviewer,Hard troubleshoot,Confidence
+GPT-6 Luna,Contender,fast-cheap / capable midtier,38,163,0.0045,14.13,mechanical through moderate implementation,Excellent throughput; can get confused or pursue a wrong side path on subtle long-horizon work.,5,4,3,3,3,4,3,high
+GPT-6 Sol,Contender,frontier-lite / strong generalist,48,103,0.13,41.07,hard implementation / architecture / review,Strong default when Luna-tier workers become unreliable.,4,4,5,5,5,5,5,high
+GPT-6 Astra,Contender,frontier / expensive / slow,53,64,0.82,84.99,frontier knot-untangling / hardest debugging,Can solve poorly specified subtle tasks; excessive for routine exploration.,3,3,5,5,5,5,5,high
+Claude Sonnet 5.5,Contender,smart-fast / premium mid-high,56,143,0.41,,daily-driver coding / reviewer / design,"One of the best general balances of intelligence, collaboration, and speed.",5,5,4,4,5,5,4,high
+Claude Opus 5.5,Contender,frontier / judgment-heavy,58,96.8,0.55,,ambiguous high-context architecture/review,Sustained judgment is excellent; poor economics for trivial work.,3,4,5,5,5,5,5,high
+GLM-5.3 Flash,Contender,cheap / strong midtier / slower task,42,61,0.25,984.14,cheap implementation / reviewer subagent,Can spend too long following a plausible wrong branch.,5,4,4,3,4,4,3,medium
+Qwen3.8-Flash-Next,Close,cheap / smart / token-heavy,40,57,0.37,1662.06,budget reasoning when latency is secondary,Good score/cost but very token-heavy AA tasks.,4,4,4,3,4,4,3,medium
+MiMo-V2.6-Flash,Contender,ultra-cheap / long-running reasoner,38,62,0.06,1253.14,high-volume implementation subagent,"Cheap dollars, not necessarily cheap wall time.",5,4,3,3,4,3,3,medium
+MiniMax-M3,Close,very fast / cheaper / lower intelligence,29,174,0.51,295.4,fast simple/moderate implementation,Intelligence ceiling makes subtle architecture/debugging risky.,5,4,2,2,3,3,2,medium
+Muse Spark 1.3,Contender,extremely fast / strong / cheap,48,210,1.37,312.77,rapid implementation / exploration,Excellent speed/intelligence mix; ecosystem maturity is the main caveat.,5,5,4,4,4,4,4,medium
+Gemini 3.8 Flash,Contender,fastest / strong / task-cost heavier,41,311,0.93,231.29,fast multimodal exploration / implementation,Very fast reasoning; can also waste tokens quickly when trajectory is wrong.,5,5,4,4,4,4,4,medium
+DeepSeek V4.1 Flash,Contender,ultra-cheap / fast reasoning,39,239,0.15,,parallel subagent / routine-moderate implementation,Very strong economics; subtle ambiguous work benefits from reviewer escalation.,5,4,3,3,4,4,3,medium
+Kimi K3,Contender,smart / premium open-model,44,0,2,,strong open-model main/subagent,"High capability, but comparatively expensive to serve.",4,5,4,4,4,4,4,medium

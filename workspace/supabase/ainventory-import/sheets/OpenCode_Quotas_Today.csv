@@ -1,0 +1,37 @@
+Model / context / window,Input USD/M,Output USD/M,Cache read USD/M,Cache write USD/M,Go monthly USD,Plus monthly USD,Go 5h USD,Go weekly USD,Plus 5h USD,Plus weekly USD,Restrictions,Verified date,Official source
+GLM-5.3-Flash,0.15,0.5,0.03,0,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GLM-5.3,1.4,4.4,0.26,0,15,120,3,7.5,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GLM-5.2,1.4,4.4,0.26,0,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Kimi K3,3,15,0.3,0,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Kimi K2.7 Code,0.95,4,0.19,0,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+LongCat-2.0,0.3,1.2,0.006,0,60,240,12,30,48,120,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+LongCat 2.5 Preview Free,0,0,0,0,,,,,,,Temporary free; unlimited is not infinite throughput.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Step 5 Preview,1,2.7,0.1,0,15,60,3,7.5,12,30,4x promotion no longer listed. End/announcement date unstated. PreviousOct20 cap60/240 preserved in Plan_Events.,2026-10-21,https://dev.opencode.ai/v2/docs/console/go
+Beam Free,0,0,0,0,,,,,,,Temporary free; unlimited is not infinite throughput.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiMo-V2.6-Flash,0.14,0.28,0.0028,0,60,120,12,30,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiMo-V2.6-Pro,0.435,0.87,0.003625,0,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiMo-V2.5,0.14,0.28,0.0028,0,60,120,12,30,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiMo-V2.5-Pro,0.435,0.87,0.003625,0,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiniMax M3.1 Flash Free,0,0,0,0,,,,,,,Temporary free; unlimited is not infinite throughput.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+MiniMax M3,0.3,1.2,0.06,0,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Muse Spark 1.3 Contributor,0.1,0.2,0.002,0,60,120,12,30,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Muse Spark 1.2 Contributor,0.1,0.2,0.002,0,60,120,12,30,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Qwen3.8 Max,2,6,0.25,2.5,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Qwen3.8 Flash,0.15,0.47,0.016,0.2,30,90,6,15,18,45,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Qwen3.7 Plus (≤ 256K tokens),0.4,1.6,0.04,0.5,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Qwen3.7 Plus (> 256K tokens),1.2,4.8,0.12,1.5,60,180,12,30,36,90,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+DeepSeek V4.1 Flash (Off-Peak),0.15,0.6,0.003,0,80,160,16,40,32,80,Peak: weekdays 01–04 and 06–10 UTC. Same underlying model allowance; do not add peak/off-peak caps.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+DeepSeek V4.1 Flash (Peak),0.3,1.2,0.006,0,80,160,16,40,32,80,Peak: weekdays 01–04 and 06–10 UTC. Same underlying model allowance; do not add peak/off-peak caps.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+DeepSeek V4 Pro (Off-Peak),0.66,1.98,0.022,0,15,60,3,7.5,12,30,Peak: weekdays 01–04 and 06–10 UTC. Same underlying model allowance; do not add peak/off-peak caps.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+DeepSeek V4 Pro (Peak),1.32,3.96,0.044,0,15,60,3,7.5,12,30,Peak: weekdays 01–04 and 06–10 UTC. Same underlying model allowance; do not add peak/off-peak caps.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Hy4 preview,0.834,2.501,0.042,0,30,120,6,15,24,60,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Hy3,0.14,0.58,0.035,0,60,240,12,30,48,120,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Grok 4.7 (≤ 200K tokens),2,6,0.5,0,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Grok 4.7 (> 200K tokens),4,12,1,0,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GPT 6 Luna (≤ 272K tokens),0.1,0.5,0.01,0.125,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GPT 6 Luna (> 272K tokens),0.2,0.75,0.02,0.25,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GPT 5.6 Luna (≤ 272K tokens),0.2,1.2,0.02,0.25,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+GPT 5.6 Luna (> 272K tokens),0.4,1.8,0.04,0.5,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Claude Haiku 5.5 (≤ 100K tokens),0.1,0.5,0.01,0.125,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Claude Haiku 5.5 (> 100K tokens),0.5,2.5,0.05,0.625,15,60,3,7.5,12,30,Context-tier rows share the underlying model allowance.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go
+Gemini 4 Argon Contributor,4,20,0.2,0,60,240,12,30,48,120,Temporary promotion.,2026-10-20,https://dev.opencode.ai/v2/docs/console/go

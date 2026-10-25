@@ -78,6 +78,11 @@ subscriptions/
 workspace/*
 !workspace/avatars/
 !workspace/avatars/*
+# Supabase muse-dev tree (migrations, functions, backup tooling) IS versioned
+# per Drew 2026-10-25: everything not huge belongs in git.
+!workspace/supabase/
+!workspace/supabase/**
+workspace/supabase/**/__pycache__/
 go/
 
 # === Platform docs (Meta maintains them, but we track them to see changes) ===

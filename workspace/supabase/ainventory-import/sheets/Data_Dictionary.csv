@@ -1,0 +1,23 @@
+Entity/Sheet,Grain / key,Maintenance rule
+Model_Catalog,model_key,One row per named model family; no effort/run facts.
+Model_Variants,model_variant_key,One row per model + effort/reasoning/fallback variant.
+Test_Runs,test_run_key,One benchmark observation; never overwrite historical runs.
+Benchmark_Versions,benchmark_version_key,Version-level leveling factor; newest/reference version = 1.
+Version_Crosswalk,version pair + model variant,Empirical bridge from identical variants tested on both versions.
+Model_TestVersion_Stats,variant + benchmark version,"Formula aggregates: count, sum, sumsq, avg, stdev, min, Q1, median, Q3, max, cost/time/speed."
+Run_Metrics,test_run_key,Formula-derived speed/cost/intelligence metrics after version leveling.
+Threshold_Metrics,run + target,Usability-bar economics per test run.
+Threshold_TestVersion,variant + version + target,Same metrics at aggregated test@version grain.
+Qualitative_Assessments,model_key,Editorial judgments only; never mixed into raw benchmark facts.
+Subscription_Value,plan + representative model,Dollar-cap values direct; message/prompt plans explicitly proxies.
+Rankings,test_run_key,Controls-driven current ranking layer.
+Benchmark_Followups,followup_id,Durable open evidence gaps; every OPEN row is revisited on each eligible maintenance run. Close only after source-backed closure criteria pass; never auto-close because a date elapsed.
+Release_Review,release_review_id,"Candidate, inclusion, exclusion, availability and source-lineage decisions for the rolling release window; preserve rejections and avoid duplicate families."
+Coding_Agent_Results,One CAI model + effort + harness + exact index version; observation_key,Versioned source observations. v1.5-specific component columns remain blank for incompatible v1.4 component versions; generic component name/version/score triplets preserve historical results. No score bridge across CAI versions.
+Coding_Agent_Lookups,One online coverage check per missing model/variant and lookup date,"Record URLs checked, search outcome, and recheck rule before retaining an unavailable CAI value."
+Benchmark_Comparison,One CAI observation joined to the AA model + effort where matched; model_variant_key,"Dropdowns independently select AA or CAI score, time, and task cost. Bubble size is a relative inverse-time scale. Do not use the chart as a cross-index calibration."
+Chart_Data_Reviewed,One current explorer source row per measured model/effort plus explicitly marked unscored coverage rows.,Do not put workbook-only models in this sheet or the Explorer JSON/CSV. Missing metrics stay blank after direct source checks.
+SaaS_Plan_Catalog,catalog_id,Current official plan/service snapshot; one row per tier or distinct benefit. Refresh only after source verification.
+Plan_Events,event_id,"Append-only material plan/benefit changes with before/after, announcement/effective dates, source, confidence, and notification state. Never overwrite history."
+Usage_Reports,report_id,Third-party reports about opaque usage or experience. Keep anecdotal evidence distinct from official facts and label confidence/sample caveats.
+Watch_Sources,watch_id,"Recurring provider source registry, monitored dimensions, geography/family/seat restrictions, monthly verification cadence, and discovery criteria."

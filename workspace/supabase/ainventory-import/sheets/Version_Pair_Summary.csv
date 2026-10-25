@@ -1,0 +1,2 @@
+from_version,to_version,dual_count,mean_ratio,median_ratio,stdev_ratio,selected_ratio,confidence,notes
+AA|v4.3.2,AA|v4.3.2,71,1,1,0,1,high,Self-ratio only. Future version pairs should summarize all dual-tested models and preserve dispersion.

@@ -1,0 +1,4 @@
+from_version,to_version,model_variant_key,score_from,score_to,ratio_to_from,pair_weight,notes
+AA|v4.3.2,AA|v4.3.2,SELF,,,1,1,Add one row per identical model-variant tested on both versions; ratio = score_to / score_from.
+CAI|v1.5,CAI|v1.5,SELF,,,1,1,Same-version self row only; do not crosswalk to AA Intelligence Index.
+CAI|v1.4,CAI|v1.4,SELF,,,1,1,Same-version self row only. v1.4 uses Terminal-Bench v2.1; do not crosswalk to CAI v1.5.

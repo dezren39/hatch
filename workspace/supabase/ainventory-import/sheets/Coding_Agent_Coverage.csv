@@ -1,0 +1,100 @@
+Coding Agent Index coverage audit · checked 2026-10-17,,,,,,,,
+"Full live-index coverage audit: 18 Explorer model families plus workbook-only Gemini 3.5 Flash; 42 unique current index rows scanned. All 26 current v1.5 observations and their published scores, components, costs, times, and token means matched. One Gemini 3.1 Pro High result is historical v1.4 and remains separate. Hybrid agent rows are not assigned to single-model results.",,,,,,,,
+
+Model family,Scope,AA effort levels in list,CAI v1.5 finding(s),CAI v1.5 exact effort levels not found / unresolved,Historical or hybrid findings kept separate,Outcome / workbook treatment,Official sources checked,Checked on
+DeepSeek V4.1 Flash,Explorer,"non-reasoning, max",None,"non-reasoning, max",None,"No exact current-release CAI row in the full index. DeepSeek V4 Flash 0731 (max) is a different, older release.
+
+Keep current V4.1 Flash CAI fields blank; retain older V4 Flash 0731 as a separate finding.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+DeepSeek V4 Pro 0813,Explorer,"non-reasoning, max",max,non-reasoning,None,"Exact CAI v1.5 Codex row found for DeepSeek V4 Pro 0813 (max).
+
+Keep max as its exact finding; do not infer non-reasoning.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+GLM-5.3-Flash,Explorer,reasoning,None,reasoning,None,"No exact GLM-5.3-Flash row. GLM-5.3 (effort not stated) is a distinct model.
+
+Do not map the GLM-5.3 row to Flash or to the AA reasoning variant.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/opencode-vs-muse-code",2026-10-17
+GLM-5.3,Explorer,"low, max",not stated,"low, max",None,"Exact model row found under OpenCode, but the public CAI model field does not state effort.
+
+Retain an effort-not-stated result separately; do not assign it to Low or Max.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/opencode-vs-muse-code",2026-10-17
+GPT-6 Luna,Explorer,"non-reasoning, low, medium, high, xhigh, max",max,"non-reasoning, low, medium, high, xhigh",None,"Exact CAI v1.5 Codex row found for GPT-6 Luna (max).
+
+Keep the max-only result; other listed efforts remain missing.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+Claude Haiku 5.5,Explorer,"low, medium, high, xhigh, max","low, medium, high, xhigh, max",None,None,"Exact Claude Code v1.5 rows found at all five listed reasoning efforts.
+
+Retain all five exact effort matches.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code",2026-10-17
+MiMo-V2.6-Pro,Explorer,reasoning,None,reasoning,None,"No exact model row in the full current index or checked official comparison tables.
+
+Leave CAI fields blank; do not substitute another MiMo release.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/opencode-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-codex
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-antigravity-sdk
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-codex",2026-10-17
+MiMo-V2.6-Flash,Explorer,reasoning,None,reasoning,None,"No exact model row in the full current index or checked official comparison tables.
+
+Leave CAI fields blank; do not substitute another MiMo release.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/opencode-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-codex
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-antigravity-sdk
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-codex",2026-10-17
+Gemini 4 Argon,Explorer,"low, high",effort not stated in model field,"low, high (unresolved)",Current index displayLabel says “Gemini 4 Argon (high)”; display.model says “Gemini 4 Argon”; official comparison tables also omit effort.,"One Antigravity CLI model row exists. Its current index display label appends “(high)” while the model field and official comparison tables omit effort.
+
+Keep the workbook row effort-not-stated and flag the display-label conflict; do not assign the result to Low or High until AA labels agree.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-codex
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-antigravity-sdk",2026-10-17
+Gemini 3.1 Pro Preview,Explorer,not stated,None,current v1.5: no exact row,Gemini 3.1 Pro (high) · Gemini CLI · CAI v1.4,"No current v1.5 row. The official Gemini CLI comparison has a historical CAI v1.4 result explicitly labeled Gemini 3.1 Pro (high).
+
+Keep Gemini 3.1 Pro in the list: its historical CAI finding has an explicit High effort label. Keep v1.4 separate from v1.5 and from the AA effort-not-stated observation.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-codex",2026-10-17
+Gemini 3.8 Flash,Explorer,"low, medium, high",high,"low, medium",None,"Exact Antigravity SDK v1.5 row found for High; no exact Low or Medium rows.
+
+Keep High as the only CAI match; leave Low and Medium blank.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-antigravity-sdk",2026-10-17
+Muse Wonder,Explorer,max,max,None,None,"Exact Muse Code v1.5 row found at Max.
+
+Retain Max; reported task cost is $8.05.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+Muse Wonder Full,Explorer,max,max,None,None,"Exact Muse Code v1.5 row found at Max.
+
+Retain Max; task cost is unavailable and must not be treated as free.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+GPT-6.1 Sol,Explorer,"low, medium, high, xhigh, max","low, medium, high, xhigh, max",None,None,"Exact Codex v1.5 rows found at all five listed reasoning efforts.
+
+Retain all five exact effort matches.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+GPT-6 Astra,Explorer,"low, medium, high, xhigh, max",max,"low, medium, high, xhigh",Hybrid Devin Fusion CLI row: GPT-6 Astra XHigh + SWE-2 Medium; not assigned to GPT-6 Astra.,"Exact Codex v1.5 row found at Max. A Devin Fusion CLI row combines GPT-6 Astra XHigh with SWE-2 Medium and is not a single-model finding.
+
+Retain only the direct GPT-6 Astra (max) row; keep mixed-agent results separate.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+GPT-5.6 Terra,Explorer,"non-reasoning, low, medium, high, xhigh, max",None,"non-reasoning, low, medium, high, xhigh, max",None,"No exact GPT-5.6 Terra row in the current full index or checked official comparison tables. GPT-5.6 Sol and GPT-5.6 Luna rows are different models.
+
+Leave CAI fields blank; do not map GPT-5.6 Sol/Luna results to Terra.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code",2026-10-17
+Claude Opus 5.5,Explorer,"low, medium, high, xhigh, max",max,"low, medium, high, xhigh",Hybrid Devin Fusion CLI row combines Claude Opus 5.5 Max + GPT-6 Luna High; not assigned to Opus.,"Exact Claude Code v1.5 row found at Max. A Devin Fusion CLI row mixes Claude Opus 5.5 with GPT-6 Luna and is not assigned to Opus alone.
+
+Retain the max-only direct result and exclude mixed-agent row from single-model coverage.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code",2026-10-17
+Claude Sonnet 5.5,Explorer,"low, medium, high, xhigh, max","low, medium, high, xhigh, max",None,None,"Exact Claude Code v1.5 rows found at all five listed reasoning efforts.
+
+Retain all five exact effort matches.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code",2026-10-17
+Gemini 3.5 Flash,Workbook only; excluded from Explorer,high,None,high,None,"No exact Gemini 3.5 Flash row in the full current index or checked official comparison tables; the model is deprecated and retained in AInventory as a workbook-only historical AA row.
+
+Keep workbook-only; leave CAI score, cost, time, and token fields blank.","https://artificialanalysis.ai/agents/coding-agents
+https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/claude-code-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/opencode-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-codex
+https://artificialanalysis.ai/agents/coding-agents/comparisons/antigravity-cli-vs-antigravity-sdk
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-muse-code
+https://artificialanalysis.ai/agents/coding-agents/comparisons/gemini-cli-vs-codex",2026-10-17

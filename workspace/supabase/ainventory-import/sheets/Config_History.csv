@@ -1,0 +1,2 @@
+snapshot_timestamp,profile,target,intel_weight,speed_weight,status_filter,availability_filter,benchmark_version,notes
+2026-09-29 10:58 America/Chicago,Default,40,0.5,0.5,Contender+Close,Current,AA|v4.3.2,Initial advanced workbook defaults; append future saved/rebuild states.

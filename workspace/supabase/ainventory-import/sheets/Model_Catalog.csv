@@ -1,0 +1,49 @@
+model_key,creator,family,release_date,context_window_tokens,knowledge_cutoff,currently_available,decom_details,pending_decom_timeframe,primary_source_url
+openai|gpt-6-luna,OpenAI,GPT-6 Luna,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-sol
+openai|gpt-6-sol,OpenAI,GPT-6 Sol,2026-09,872000,,yes,,,https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-sol
+openai|gpt-6-astra,OpenAI,GPT-6 Astra,2026-09,1000000,2026-04,yes,,,https://artificialanalysis.ai/models/releases/comparisons/gpt-6-sol-vs-gpt-6-astra
+openai|gpt-5-6-luna,OpenAI,GPT-5.6 Luna,2026-07,1000000,,yes,Older generation; current AA page still lists active providers. Vendor decommission date not verified.,,https://artificialanalysis.ai/models/releases/gpt-5-6-luna
+openai|gpt-5-6-sol,OpenAI,GPT-5.6 Sol,2026-07,1000000,,yes,Older generation; current AA page still lists active providers. Vendor decommission date not verified.,,https://artificialanalysis.ai/models/releases/gpt-5-6-sol
+anthropic|claude-sonnet-5-5,Anthropic,Claude Sonnet 5.5,2026-09-28,1000000,,yes,,,https://artificialanalysis.ai/models/releases/claude-sonnet-5-5
+anthropic|claude-opus-5-5,Anthropic,Claude Opus 5.5,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/releases/claude-opus-5-5
+anthropic|claude-opus-5,Anthropic,Claude Opus 5,2026-07,1000000,,yes,Prior Anthropic frontier generation; AA still lists API providers.,,https://artificialanalysis.ai/models/releases/claude-opus-5
+anthropic|claude-sonnet-5,Anthropic,Claude Sonnet 5,2026-06,1000000,,yes,Prior Anthropic frontier generation; AA still lists API providers.,,https://artificialanalysis.ai/models/releases/claude-sonnet-5
+anthropic|claude-4-5-haiku,Anthropic,Claude 4.5 Haiku,2025-10,200000,2025-07-01,yes,Earliest cutoff generation requested; active providers listed by AA.,,https://artificialanalysis.ai/models/releases/claude-4-5-haiku
+anthropic|claude-opus-4-5,Anthropic,Claude Opus 4.5,2025-11,200000,,yes,One additional Anthropic generation back; active providers listed by AA.,,https://artificialanalysis.ai/models/releases/claude-opus-4-5
+z-ai|glm-5-3-flash,Z AI,GLM-5.3 Flash,2026-08,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/glm-5-3-flash-vs-qwen3-8-flash-next
+alibaba|qwen3-8-flash-next,Alibaba,Qwen3.8-Flash-Next,2026-08,256000,,yes,,,https://artificialanalysis.ai/models/comparisons/glm-5-3-flash-vs-qwen3-8-flash-next
+xiaomi|mimo-v2-6-flash,Xiaomi,MiMo-V2.6-Flash,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/mimo-v2-6-flash-vs-minimax-m3
+minimax|minimax-m3,MiniMax,MiniMax-M3,2026-06,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/mimo-v2-6-flash-vs-minimax-m3
+meta|muse-spark-1-3,Meta,Muse Spark 1.3,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/muse-spark-1-3-vs-gemini-3-8-flash
+google|gemini-3-8-flash,Google,Gemini 3.8 Flash,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/muse-spark-1-3-vs-gemini-3-8-flash
+deepseek|deepseek-v4-1-flash,DeepSeek,DeepSeek V4.1 Flash,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/deepseek-v4-1-flash
+z-ai|glm-5-3,Z AI,GLM-5.3,2026-08,1000000,,yes,,,https://artificialanalysis.ai/models/creators/z-ai
+alibaba|qwen3-8-max-0902,Alibaba,Qwen3.8 Max 0902,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/creators/alibaba
+alibaba|qwen3-8-27b,Alibaba,Qwen3.8 27B,2026-09,262144,,yes,,,https://artificialanalysis.ai/models/creators/alibaba
+kimi|kimi-k3,Kimi,Kimi K3,2026-09,1000000,,yes,,,https://artificialanalysis.ai/models/comparisons/mimo-v2-6-flash-vs-kimi-k3
+google|gemini-4-argon,Google,Gemini 4 Argon,2026-09,1000000,,yes,,,https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+openai|gpt-6-1-sol,OpenAI,GPT-6.1 Sol,2026-09-29,1000000,,yes,,,https://openai.com/index/gpt-6-astra/
+anthropic|claude-haiku-5-5,Anthropic,Claude Haiku 5.5,2026-10-07,1000000,,yes,,,https://www.anthropic.com/claude-haiku-5-5
+mistral|mistral-large-4-preview,Mistral,Mistral Large 4 Preview,2026-10-06,520000,,limited,Public API preview. Artificial Analysis page summary reports 524k while its FAQ rounds to 520k; reconcile in Benchmark_Followups.,Mistral planned open-weight release later in October 2026; verify before changing availability.,https://mistral.ai/news/mistral-large-4/
+spacexai|grok-4-7,SpaceXAI,Grok 4.7,2026-09-21,500000,,yes,,,https://x.ai/news/grok-4-7
+upstage|solar-mini-4,Upstage,Solar Mini 4,2026-09-22,512000,2026-02,yes,Official Upstage launch page states 512K context. Artificial Analysis current page states 1M; discrepancy is open in Benchmark_Followups.,,https://www.upstage.ai/blog/en/solar-mini-4
+xiaomi|mimo-v2-6-pro,Xiaomi,MiMo-V2.6-Pro,2026-09-22,,,yes,Released as part of Xiaomi MiMo-V2.6 series. Independent AA model page retrieval failed on 2026-10-11; no score imported.,,https://mimo.xiaomi.com/mimo-v2-6
+google|gemini-3-8-flash-cyber,Google,Gemini 3.8 Flash Cyber,2026-09-16,,,limited,Restricted to trusted defenders through Fairwind; do not treat as generally available.,,https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions
+meta|muse-wonder-full,Meta,Muse Wonder Full,2026-10-12,1000000,,yes,,,https://dev.meta.ai/resources/blog/build-with-muse-wonder
+meta|muse-wonder,Meta,Muse Wonder,2026-10-12,1000000,,yes,,,https://dev.meta.ai/resources/blog/build-with-muse-wonder
+deepseek|deepseek-v4-pro-0813,DeepSeek,DeepSeek V4 Pro 0813,,,,yes,,,https://artificialanalysis.ai/models/deepseek-v4-pro-non-reasoning
+openai|gpt-5-6-terra,OpenAI,GPT-5.6 Terra,,,,yes,,,https://artificialanalysis.ai/models/gpt-5-6-terra
+deepseek|deepseek-v4-flash-0731,DeepSeek,DeepSeek V4 Flash 0731,,,,,Coding Agent Index label is V4 Flash 0731; kept separate from current workbook V4.1 Flash. Release/availability metadata not inferred.,,https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-muse-code
+google|gemini-3-1-pro-preview,Google,Gemini 3.1 Pro Preview,2026-02,1048576,,yes,,,https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview
+google|gemini-3-5-flash,Google,Gemini 3.5 Flash,2026-05,1048576,,no,Deprecated; Google states API requests to this ID route to Gemini 3.6 Flash.,,https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash
+meta|muse-spark-open,Meta,Muse Spark Open,2026-10-15,1000000,,yes,,,https://research.meta.ai/blog/muse-spark-open
+minimax|minimax-m3-1-flash,MiniMax,MiniMax-M3.1-Flash,2026-10-19,1000000,,yes,,,https://www.minimax.io/blog/minimax-m31f
+deepseek|deepseek-v4-1-flash-1017,DeepSeek,DeepSeek V4.1 Flash 1017,2026-10-17,1000000,,yes,Versioned 1017 snapshot; official API alias is updated to latest V4.1 Flash and pricing is unchanged.,,https://api-docs.deepseek.com/news/news261017/
+nvidia|nemotron-3-5-super-vl,NVIDIA,Nemotron 3.5 Super VL,2026-10-15,,,yes,"120B open multimodal model; NVIDIA release claims are vendor-reported, distinct from AA result.",,https://blogs.nvidia.com/blog/nemotron-3-5-super-vl/
+nvidia|nemotron-3-5-bolt-74b-a9b,NVIDIA,Nemotron 3.5 Bolt 74B-A9B,2026-10-15,262144,,yes,74B total / 9B active; optimized for 24GB local systems. No API provider benchmarked in AA snapshot.,,https://blogs.nvidia.com/blog/nemotron-3-5-super-vl/
+inception|mercury-3,Inception,Mercury 3,2026-10-19,,,yes,Diffusion-based LLM. Release announcement reports >1000 tokens/s and comparative quality; treat as vendor claim pending independent exact-version measurements.,,https://www.inceptionlabs.ai/blog/introducing-mercury-3
+mistral|voxtral-small-transcribe-3,Mistral,Voxtral Small Transcribe 3,2026-10-20,,,yes,Speech-to-text model; AA-WER observation tracked separately from general LLM benchmark indices.,,https://mistral.ai/news/voxtral-3/
+mistral|voxtral-mini-transcribe-3,Mistral,Voxtral Mini Transcribe 3,2026-10-20,,,yes,Batch speech-to-text endpoint; official list price $0.0035/min.,,https://mistral.ai/news/voxtral-3/
+mistral|voxtral-mini-transcribe-realtime-3,Mistral,Voxtral Mini Transcribe Realtime 3,2026-10-20,,,yes,Realtime speech-to-text endpoint; official list price $0.008/min; distinct streaming workload.,,https://mistral.ai/news/voxtral-3/
+mistral|voxtral-speech-3,Mistral,Voxtral Speech 3,2026-10-20,,,yes,Text-to-speech endpoint; official list price $13/1M characters.,,https://mistral.ai/news/voxtral-3/
+mistral|timestral-209m,Mistral,Timestral 209M,2026-10-15,,,yes,"Time-series forecasting model; publisher reports public benchmark leaderboard results. Specialized forecast track, not general LLM index.",,https://mistral.ai/news/timestral/
