@@ -104,17 +104,8 @@ tools/dispatcher/cache/
 # Secret values on disk — never track; restored from Bitwarden by tooling.
 /tools/secrets.d/
 
-# Credential-handling scripts — private-only by Drew's classification
-# (copies already preserved in dezren39/hatch-personal).
-/tools/bws-backup-secrets.sh
-/tools/bws-env.sh
-/tools/bws-receive-token.sh
-/tools/bws-store-values.py
-/tools/cred-receiver.py
-/tools/supabase-exec.py
-/tools/turso-exec.py
-/tools/op-env.sh
-/tools/cloudflare/wrangler-secret.py
+# Credential-handling scripts are TRACKED (Drew 2026-10-25: they handle
+# secrets but hold no values — audited; values live in Bitwarden only).
 
 # Tool-state dotdirs/files: live tokens, session state, logs, caches.
 # Ignored wholesale; audited pure-config files unignored individually below.
