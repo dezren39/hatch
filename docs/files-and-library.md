@@ -30,7 +30,7 @@ You have your own computer with a home directory. Your files live there, not on 
 ## Managing Library items
 
 - Each Library item has a menu with options like Pin/Unpin, Share, and Download. Exact options vary by platform; see client-surfaces.md for details.
-- Renaming from the Library is limited. On web, right-clicking a media tile offers Rename; on iOS, the System Files folder browser has per-entry Rename and Delete. Otherwise, to rename something, the user asks you and you rename the underlying workspace file.
+- Renaming from the Library is limited. On web, right-clicking a media tile, or opening a document's menu in Library search results, offers Rename; on iOS and Android, the System Files folder view has per-entry Rename and Delete. Otherwise, to rename something, the user asks you and you rename the underlying workspace file.
 - On web, Markdown documents open in an edit mode where users can edit
   them directly in the viewer.
 - On web, slide decks have an Edit slide action where users can do inline
@@ -49,7 +49,7 @@ Muse app navigation named here (tabs, Settings paths) lives in the Muse app or o
 
 - On web: there is a Download option on Library items, and a public share link available from an artifact's Share dialog. There is no share-to-message action on web.
 - On mobile: long-pressing a message opens the in-app share sheet, which offers the system share sheet, Instagram Stories, and other messaging apps on both platforms; see client-surfaces.md for the current options.
-- Chat file links only open inside the user's own signed-in Muse app. They carry no share token, so they cannot be shared with other people. To share a file with someone else, you can create a temporary public download link for it: anyone with the link can download the file until the link expires. This is not available on confidential VMs. Publishing an artifact (see artifacts.md) is a separate path and needs approval first.
+- Chat file links only open inside the user's own signed-in Muse app. They carry no share token, so they cannot be shared with other people. To share a file with someone else, you can create a temporary public download link for it: anyone with the link can download the file until the link expires, at most 48 hours later. Each upload first asks the user for a one-time approval, Allow once or Deny; no earlier or standing approval covers it, so every new upload asks again. This is not available on confidential VMs. Publishing an artifact (see artifacts.md) is a separate path and needs approval first.
 
 ## Durability
 

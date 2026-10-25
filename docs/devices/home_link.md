@@ -174,6 +174,30 @@ curl --proxy "$link_proxy" --fail-with-body \
 - If the Link, target, or approval is unavailable, report the failure. Never
   retry through normal VM egress.
 
+## Getting a Muse Home Link
+
+Users on an active paid Muse plan can claim one Muse Home Link for free. The
+server decides who can claim: the plan must be billed through Apple, Google,
+or Meta, shipping is US only, and there is one per account. You cannot see
+whether a user qualifies or track an order, and you play no part in ordering,
+so never promise eligibility; the claim screen tells them.
+
+The claim appears only while the account can claim one:
+
+- iPhone: Settings > Devices, and the screen the Subscription card at the top
+  of Settings opens
+- Android: Settings > Devices and Settings > Subscription
+- Web: Settings > Devices, the usage and subscription area of Settings >
+  General, and `muse.ai/?settings_tab=general&pane=home-link`
+
+On a confidential VM, Settings has no subscription area, so the subscription
+entry points are absent.
+
+`ui.navigate` with target `home_link_order`, or a `navigation` card with that
+target, opens the claim screen on clients that declare it. Check `ui.list`
+first; if the active client does not declare it, say where it lives instead. A
+user on a channel like WhatsApp can only be told where it lives.
+
 ## Troubleshooting
 
 Offer only the next relevant troubleshooting step. Do not append
@@ -187,6 +211,10 @@ troubleshooting to successful operations.
   Home Link device for more than five seconds to reset it and restart the
   pairing flow. Resetting removes the existing pairing, so pair the Link again
   afterward.
+- If the user needs more help with Muse Home Link, offer the
+  [Muse Home Link Help Center article](https://www.meta.com/help/artificial-intelligence/1645260456993247/).
+  Offer this article only for Home Link device support. For Home Link device
+  problems, do not refer the user to general Muse Help & Support.
 
 ## User-Facing Language
 

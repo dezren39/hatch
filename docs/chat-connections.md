@@ -19,12 +19,12 @@ covered in `~/docs/devices/mac_app.md`; it is a separate device capability.
 
 ## Connection flow
 
-Use the provider guide's official secure app link. The app's existing
-Messaging Channels screen uses this same flow and may retain that label until
-the client updates. QR codes, pairing artifacts, and Connect buttons belong to
-the app. Status and disconnect use `chat.connection_status` and
-`chat.disconnect`, with `provider` as the argument. Supported preferences use
-`chat.configure_connection` from the user's own Muse chat.
+Use the provider guide's official secure app link. The app's Settings >
+Messaging channels screen uses this same flow. QR codes, pairing
+artifacts, and Connect buttons belong to the app. Status and disconnect
+use `chat.connection_status` and `chat.disconnect`, with `provider` as
+the argument. Supported preferences use `chat.configure_connection` from
+the user's own Muse chat.
 
 ## Message ownership
 

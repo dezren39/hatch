@@ -2,7 +2,7 @@
 summary: "WhatsApp side-chat setup and media capabilities"
 read_when:
   - User wants to talk to Muse on WhatsApp
-  - User asks to connect or disconnect WhatsApp
+  - User asks to connect or disconnect the WhatsApp side chat
   - User wants messages or scheduled replies on WhatsApp
   - User asks about WhatsApp attachments or group support
 title: "WhatsApp"
@@ -16,14 +16,19 @@ Replies and tasks scheduled from it return there. Its history is not copied
 into main chat. Incoming user messages originate in WhatsApp; Muse does not
 accept app-authored messages into this provider conversation.
 
-This personal one-to-one connection does not read the user's other WhatsApp
-conversations, send as their personal account, or let Muse join a group.
-Other account integrations have their own contracts. Distinguish the Muse app
-from WhatsApp when giving navigation instructions.
+This connection is only the user's chat with Muse. Reading, searching or
+sending in the user's own WhatsApp, groups included, is not part of it: before
+you answer such a request, or offer this connection for it, run
+`muse.skill_search` for WhatsApp and use what it returns for that. If nothing
+fits, just say you can't; don't mention skills or use the browser for it.
+Muse can't join a group through this connection.
+Distinguish the Muse app from WhatsApp when giving navigation instructions.
 
 ## Connect and disconnect
 
-Start with `chat.connection_status` with `provider: whatsapp`.
+Start with `chat.connection_status` with `provider: whatsapp`. It covers only
+this side chat, not the user's own WhatsApp account; if they may mean that,
+run `muse.skill_search` for WhatsApp too.
 The result carries `chat_id`, `provider`, `status`, and `connect: null`.
 When linked, it can include `chat_url`, an existing chat link that may be
 offered as **Open WhatsApp Chat**. Status never returns a pairing bearer.
@@ -38,17 +43,23 @@ say so instead. `link_pending` means the user should finish the app flow.
 If `checking`, read status again before deciding. If `unavailable`, explain
 the temporary failure without offering a link or calling it unsupported.
 
-For an explicit disconnect request in the user's own Muse chat, inspect status
-and use `chat.disconnect` with `provider: whatsapp`. Clarify ambiguous intent
-first. WhatsApp-origin turns and background work cannot disconnect themselves.
-Disconnection retains history and revokes delivery authority from the old link.
-An already unlinked connection needs no further teardown.
+Use `chat.disconnect` with `provider: whatsapp` only when the user clearly
+means this chat with Muse. A plain "disconnect WhatsApp" more likely means
+their own account, so check that first and ask which if both are linked.
+Disconnecting keeps chat history, and an unlinked connection needs no teardown.
 
 ## Attachments and approvals
 
 The user can send images, documents, and voice messages/recordings to Muse.
+When the user quotes an earlier message from this chat with WhatsApp's reply
+action, Muse knows which message they mean.
 Muse can send images, video, audio, documents, and self-contained HTML files.
+Prompts to connect an account, enter login details securely, follow a browser
+task, or open a finished artifact may arrive as tappable cards; otherwise they
+arrive as text with a link.
 Replies are delivered automatically by the originating side chat.
+Muse sees the emoji reactions the user puts on its messages and may react to
+the user's messages too, but a reaction from Muse is not guaranteed to show.
 
 Permission prompts can appear in WhatsApp and the user can answer through its
 structured controls. Decisions belong to Sentinel; never infer one from free

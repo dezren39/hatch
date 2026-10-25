@@ -39,8 +39,6 @@ can be published. Rules:
   needs a fresh one-tap approval. Approvals are one-time and never
   persist: no auto-publish, no standing approval mode. Published pages
   do not update automatically.
-- On confidential VMs, sharing is unavailable. The flow fails before
-  anything is reviewed or published.
 
 Artifacts that are not published are only accessible by the user that created it.
 
@@ -52,8 +50,10 @@ depends on that connector's own skill doc (see `~/docs/connectors.md`).
 ## Deletion
 
 Deleting an artifact is permanent: it removes the artifact and its data,
-tears down hosting, and revokes any public share. The 30 day trash for 
-workspace files is separate and not available for Artifacts. Always warn the user before deleting an
-artifact. `artifact.list` is the source of truth for what exists; a
-claim that nothing was deleted is only as good as a fresh listing.
+tears down hosting, and revokes any public share. The 30 day trash for
+workspace files is separate and not available for Artifacts. Always warn
+the user before deleting an artifact. `artifact.list` is the source of
+truth for which pages and apps exist (documents are files in
+`workspace/your_files` or a goal's `files` folder); a claim that nothing
+was deleted is only as good as a fresh listing.
 

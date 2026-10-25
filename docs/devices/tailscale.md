@@ -104,6 +104,11 @@ same DNS route. A blocking or negative answer does not switch DNS providers.
 These settings apply to requests through the Tailscale proxy. The connector
 does not offer exit-node selection.
 
+Reaching a tailnet machine does not by itself reach the local network behind
+it. A machine on that network is reachable only through a subnet route that a
+tailnet device advertises. `tailscale status` lists each device's advertised
+routes.
+
 `tailscale status` says whether an address is on the network. There is no
 reachability probe; test the service with a TCP connection through the proxy.
 

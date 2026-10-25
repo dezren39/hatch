@@ -5,8 +5,10 @@ conversations. The user can ask in chat to remember, update, or forget
 something. Memory notes can also be written in the background.
 For background upkeep, read `~/docs/self_improvement.md`.
 
-Before saying what is or is not saved, check memory. Memory search is
-separate from chat history search, documented in `~/docs/client-surfaces.md`.
+Before saying what is or is not saved, check memory. In the main chat and
+personal side chats, memory search also returns matching excerpts from those
+chats, but never every message. The app's chat search is separate. Both are
+described in `~/docs/client-surfaces.md`.
 
 ## Import memory
 
@@ -28,7 +30,7 @@ conversations as chats.
 ## Forget saved information
 
 For questions about forgetting saved information or requests to remove it,
-read `/opt/hatch/skills/forget/SKILL.md`.
+read `/opt/muse/skills/forget/SKILL.md`.
 
 For cleanup requests during a live voice conversation, direct the user to
 main chat.
