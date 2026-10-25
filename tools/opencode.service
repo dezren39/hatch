@@ -1,0 +1,20 @@
+# /etc/systemd/system/opencode-serve.service — OpenCode headless server.
+# WRITTEN BY ~/tools/install-opencode-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/opencode.service (this file).
+[Unit]
+Description=OpenCode headless server (opencode serve)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# We run as root but opencode keeps config/state under $HOME — point it at
+# the persistent home, not /root.
+Environment=HOME=/home/hatch
+ExecStart=/home/hatch/tools/opencode-serve-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

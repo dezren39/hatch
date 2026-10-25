@@ -296,6 +296,21 @@ worth recording.
 - Day-to-day token `cloudflare.api-token-day-to-day` (minted 2026-10-07, id
   26b92e8c…): Workers Scripts/KV/R2/D1/Queues read+write + Workers Tail read,
   scoped to account 234b866b… only. Use for routine wrangler/API work.
+  - **2026-10-23 (Drew: "update your key … using your root key"):** added two
+    permission groups via the account-wide token — `Analytics Read`
+    (zone-scoped to security.cab d9632853…) and `Workers Containers Read`
+    (account scope). Verified live: containers list now 200 (was 403), and
+    zone analytics returns real data via the **GraphQL** API. NOTE: the
+    legacy REST `/zones/{id}/analytics/dashboard` refuses ALL account-owned
+    tokens (error 1016) — analytics for account tokens = GraphQL
+    (httpRequests1dGroups etc.) only. security.cab traffic seen at verify
+    time: 1,989 requests 2026-10-22, 61 on 2026-10-23 (partial day).
+  - **2026-10-23 later (agent-inbox build, same Drew directive):** the day
+    token additionally gained three groups, all **zone-scoped to security.cab
+    only**: Email Routing Rules Write, DNS Write, Zone Settings Write —
+    needed to stand up Email Routing on the agents.security.cab subdomain.
+    Still NOT present: zone Workers Routes write (a webhook-gateway test
+    route failed with "No access to the specified resource").
 - Inference token `cloudflare.api-token-ai-inference` (minted 2026-10-07, id
   7746f234…): AI Gateway Read+Run + Workers AI Read+Write, account-scoped.
   Live-tested OK (gateway list + embedding inference). For inference use.
@@ -308,6 +323,15 @@ worth recording.
   python-urllib's default UA gets 403 on workers.dev even for no-auth routes.
   Use a browser UA header for worker/API test requests (hit 2026-10-07 —
   this masqueraded as a "wrong upload secret" for an hour).
+
+## 1Password CLI (op) — two service accounts (set up 2026-10-24)
+- Binary: `~/tools/bin/op` → `~/tools/1password-cli/op`.
+- TWO service-account tokens, BOTH kept in Bitwarden Secrets Manager (project "developing today"); Drew's rule 2026-10-24: **museRW is the default**.
+  - **museRW** (default): Bitwarden key `op museRW service account auth token 1password` (id 5d3d53c9-…), Integration ID C47JI5RKSBA6HK772VOVHX4QTE, service-account email eq7f2cj4…@1passwordserviceaccounts.com. Permissions per Drew: Dev read/write + Walla read-only. 852 chars, sha256 prefix cf80ff5b7e6a5ea2. Origin: 1Password Dev vault item "Service Account Auth Token: museRW" (hy7f4ugc53jo2svowxsw3cgryy) — pull/copy THAT item in/out of Dev for exact transfers; a view-once share-link transcription of this token (2026-10-24) came back corrupt and had to be shredded — never trust visual transcription for 852-char tokens.
+  - **muse** (fallback, do NOT rename its Bitwarden key — laptop entries reference it exactly): key `op muse service account auth token 1password` (id 3855e961-…), Integration ID UFWDYBUZRJFBPCGRZSOC6JXTNI, email ppcaz3p4…@. Its own item lives in the Walla vault ("Service Account Auth Token: muse").
+- `source ~/tools/op-env.sh` → exports OP_SERVICE_ACCOUNT_TOKEN for museRW (default); `source ~/tools/op-env.sh muse` → the original account. Fetches from Bitwarden at source time; never prints the value.
+- Verified 2026-10-24 with museRW: `op whoami` OK, `op vault list` = Dev + Walla, item list/get in BOTH vaults OK (reads ~2s).
+- **Sandbox writes WORK — the "hang" was stdin (root-caused 2026-10-24):** `op item create` with NO field assignments blocks forever reading a template from stdin (no TTY needed to reproduce; timeouts at 25–170s, item never appears — earlier notes called this a transport hang; it is not). FIX: always pass field assignments or `--template <file>`, and add `< /dev/null`. With that, creates complete in ~2.5s from the sandbox with museRW. Verified end-to-end 2026-10-24: probe item created in Dev, read back, deleted; then the 11-item catch-up batch (dnb.my-account-password, cline.api-key, turso.general-db-token, cloudflare.webhook-gateway.github-secret, cloudflare.webhook-gateway.admin-token, cloudflare.agent-inbox-admin-token, turso.muse-meta-agent-inbox-token, rustdesk.amd-6-password, krdp.amd-6-password, commandcode.api-key, globalping.api-token) filed into Dev as LOGIN items (value in a CONCEALED password field, built via a 600 `--template` JSON so values never hit argv) and each verified with `op item get`; a sha spot-check (cline.api-key) matched Bitwarden byte-for-byte (`op item get --fields` output appends a trailing newline — trim before hashing). A laptop-side create probe also hung the same way (same stdin cause); no laptop write path is needed.
 
 ## Exec stdin vs heredoc (hit 2026-10-05)
 - The exec tool's `stdin` parameter CONFLICTS with shell heredocs (`python3 - <<'EOF'`): the heredoc wins and the `stdin` parameter content is silently dropped — the script runs seeing empty stdin, with no error. Three consecutive Cloudflare auth checks ran with an empty token because of this and reported "not authenticated".
@@ -325,3 +349,169 @@ worth recording.
 ## init.sh interrupted mid-run on a fresh recycle (hit 2026-10-16)
 - The sandbox recycled ~7s into a scheduled run (boot 12:20:42 UTC, run started 12:20:34, init.sh launched 12:20:49): the exec dispatch died with "the service restarted while it was running" and init.sh left NO init.log trace (no START/END lines) — the interrupted invocation did nothing at all.
 - Detect: `/proc/sys/kernel/random/boot_id` differs from init-status's `boot_id`, and init.log's last line predates the boot. Fix: just re-run init.sh — it's idempotent; the fresh-boot full init ran clean (exit 0, 82s, END result=SUCCESS, 10572 store paths, mcpx unit restored+started). Nothing else needs repair.
+
+## opencode server on this sandbox (set up 2026-10-20)
+- `opencode` 1.18.31 + `mcpx` were already installed; OpenChamber was NOT
+  (nix flake package only). mcpx unit: system unit, active+enabled.
+- opencode-serve: system unit written by `~/tools/install-opencode-service.sh`
+  (a run_step in init.sh, mirrors mcpx). Canonical unit `~/tools/opencode.service`;
+  start wrapper `~/tools/opencode-serve-start.sh`; runs `opencode serve --pure
+  --port 4096 --hostname 127.0.0.1` with Drew's full config deployed at
+  `~/.config/opencode/opencode.jsonc` (copied from devtoday-code/.opencode/).
+- Runtime env file `~/tools/secrets.d/opencode-serve.env` (dir 700, file 600),
+  regenerated by the install script every boot: egress proxy + CA paths +
+  CLOUDFLARE_API_TOKEN fetched fresh from Bitwarden (`cloudflare.api-token-
+  ai-inference`). A systemd service inherits NONE of the session env — no
+  proxy, no CA bundle, no tokens — so this file is the bridge.
+- **Egress proxy without auth:** the session `HTTPS_PROXY` URL carries a
+  per-session credential that ROTATES (two different passwords seen within
+  4 minutes) — never bake it into service files. The same proxy answers
+  UNAUTHENTICATED at `http://hatch-egress-proxy:3128` from inside the
+  sandbox; services should use that form. With it + `NODE_EXTRA_CA_CERTS=
+  /run/hatch/egress-tls/ca-bundle.pem`, Bun fetch works (models.dev 200).
+- Cloudflare-fronted hosts 403 non-browser UAs (error 1010 class): python
+  urllib default UA got 403 from models.opencode.ai + the AI Gateway;
+  browser UA got 200. Bun's fetch passed.
+- **--pure is required for now:** with plugins enabled, session creation
+  works but the message loop never starts (plugins in ~/.config/opencode/
+  plugin: mcpx bridge, mcpx-session.ts, subtask2 — the mcpx bridge is the
+  suspect). Full config + --pure answers in ~4-6s.
+- **Never create server sessions without a project directory:** a session
+  defaulted to /home/hatch (giant git worktree = the whole home) stalls the
+  loop on snapshot/git work. Always pass `?directory=<project dir>`.
+- Verified end-to-end 2026-10-20: session + message via cloudflare-gateway
+  DeepSeek V4 Flash; a 3-step file task (write/run/document) completed in
+  13s. Only the 3 Cloudflare providers are credentialed on this box (token
+  from Bitwarden); claude-code / openai-codex / google / antigravity need
+  Drew's OAuth logins (auth.json on his machines) — `opencode auth list`
+  here = 0 credentials.
+- sops 3.13.2 via dispatcher; sandbox age identity at
+  ~/.config/sops/age/keys.txt (pub age1nw32aw…85h43p), private key backed
+  up in Bitwarden as `sops.age-private-key-sandbox` (hash-verified). Drew's
+  repo secrets use HIS age key (age1uathj…3ag82, private half on his Mac)
+  — not decryptable here.
+- **Codex (openai OAuth) — RESOLVED 2026-10-20 ~13:10:** device-code login
+  completed on this box (needed Drew to enable device-code sign-in in
+  ChatGPT Security Settings first); token verified healthy (plan "prolite",
+  JWT exp 2026-10-30). **The built-in `openai` provider works**: server
+  session with providerID `openai`, model `gpt-6.1-sol` answered live
+  (cost 0 — billed to the ChatGPT plan); direct HTTPS probes of
+  chatgpt.com/backend-api/codex also succeed in ~2s. What does NOT work
+  here is Drew's custom `openai-codex` provider in opencode.jsonc: it
+  points at `http://127.0.0.1:18744/v1`, a per-machine bridge —
+  `bin/codex-proxy.mjs` in devtoday-code, a Node proxy that shells out to
+  the Muse per request, run as a systemd user service from
+  home-manager (`home/common/default.nix`, CODEX_PROXY_PORT=18744). Not
+  installed on this sandbox (no Muse here), and not needed: the
+  built-in route handles OAuth refresh natively. The proxy's added value
+  on his machines is effort-level mapping (low→ultra) via the CLI. If
+  parity is ever wanted: install Muse + run codex-proxy.mjs as a
+  service following the ~/tools pattern. Early "socket closed" errors
+  were all the dead 18744 endpoint, never the network or the token.
+  Models the backend accepts for this account: gpt-6.1-sol, gpt-6-astra,
+  gpt-6-sol, gpt-reserve, gpt-6-luna, gpt-5.6-sol/terra/luna,
+  codex-auto-review (NOT gpt-5.5 — 400 "not supported with a ChatGPT
+  account").
+- **Meta Model API provider (wired 2026-10-20):** custom provider `meta`
+  in the deployed opencode config (npm @ai-sdk/openai — NOT
+  openai-compatible, which lacks .responses and errors out), baseURL
+  https://api.meta.ai/v1, credential in auth.json from Bitwarden
+  `meta.api-key` (verified: GET /v1/models 200, lists muse-wonder-1.0,
+  muse-spark-1.3/1.2/1.1, muse-image-1.0, sam-3.1, voice). **CORRECTED
+  2026-10-25 (the 402 era was a bad key, not an unfunded account):**
+  Drew's entitlement is the **Muse Code High Usage subscription** — a
+  TOKEN QUOTA on his one team "My Team" (projects: Muse Code +
+  Default Project, both tier PAID); weekly limit was 46% used resetting
+  Sun 19:00 at first read (2026-10-25). The original `meta.api-key` was
+  ORPHANED — it matches neither key on his team, hence the 402s (which
+  through the SDK surface as silent multi-minute stream hangs, not
+  errors). A Visa •••• 7535 IS on file as pay-as-you-go backstop ($0 due;
+  auto-charges at $20 balance or Nov 1; $12/mo spend alert). FIX APPLIED
+  2026-10-25: new key "muse-sandbox-funded" minted on the team, filed as
+  Bitwarden + 1Password `meta.api-key-funded` (sha256 6b1ea8ee…), sandbox
+  auth.json `meta` entry rewired to it (old item/key preserved), proven
+  by direct API call AND through the OpenCode server (meta/muse-spark-1.1
+  answered live). The subscription-backed "Muse Code" project key
+  (LLM_1026…) appears provisioned, not user-mintable; the minted key
+  landed in Default Project and draws on the same team entitlement.
+- **opencode CLI (`opencode run`) hangs on this box (2026-10-20):** any
+  provider, with or without --pure, from ~/tmp or /tmp, with the session
+  proxy or the unauthenticated one, with OPENCODE_MCPX_DAEMON=0 — it
+  loads config, logs "all LSPs are disabled / init", then never produces
+  output (75–170s timeouts, zero bytes). The SERVER (same binary, same
+  config, same flags) answers fine via its HTTP API, so drive opencode
+  through the server on this box until this is root-caused. Not a
+  network, proxy-credential, cwd/git-discovery, plugin, or mcpx-daemon
+  issue — each ruled out by a separate test.
+- **/tmp is NOT shared with systemd services after a recycle** (hit
+  2026-10-20): the opencode service got ENOENT on a /tmp dir created in
+  the same exec minute. Use ~/tmp/<dir> as session `directory=` for
+  server work — persistent and visible to both sides.
+- **Muse Code CLI (`muse` 1.4.11) network env (verified 2026-10-21):**
+  headless `muse exec` only reaches Meta with
+  `HTTPS_PROXY`/`HTTP_PROXY` (+ lowercase) =
+  `http://hatch-egress-proxy:3128` (the UNAUTHENTICATED egress proxy —
+  never the rotating per-session credential) and
+  `SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem`; and `META_API_KEY`
+  must NOT be set — the binary states it takes priority over the OAuth
+  account login, and the API key is a separate pay-as-you-go wallet whose
+  inference returns 402 until funded. Login itself is OAuth
+  (~/.config/muse/auth.json). `muse exec --json` emits JSONL: text in
+  `run.output.delta` payloads, final text in `run.terminal.completed`,
+  token usage in `run.usage`. Each call carries ~25–27k input tokens of
+  agent-session context (plan allowance burn, not per-token API billing).
+  A codex-proxy-style OpenAI-compatible bridge built on this lives at
+  `~/tmp/muse-proxy/muse-proxy.mjs` (port 18746 via `MUSE_PROXY_PORT`;
+  note 18746 is claimed by design-code-proxy in devtoday-code's
+  home-manager config — reconcile before wiring both up).
+
+## OpenCode 2 migration (2026-10-24, supersedes v1 facts above)
+- The sandbox now runs the **fleet fork's OpenCode v2.0.30+e7baa0d**
+  (developing-today/opencode @ e7baa0d1, the rev devtoday-code's flake.lock
+  pins for input `opencode` — same package the laptop's home-manager uses).
+  Installed into the nix profile (element `opencode`) from a local build of
+  the fork flake; /usr/local/bin/opencode resolves via nix-profile-sync.
+  Building the fork flake here needs `NIX_ENFORCE_PURITY=0` on the package
+  (cc-wrapper purity check vs the /nix symlink at makeBinaryWrapper's link
+  step — same gotcha class as the mcpx C-wrapper one above); shim flake +
+  full state in ~/workspace/.opencode-v1-backup-2026-10-24/V2-STATE.md.
+  (An upstream npm @opencode/cli install was tried first and REMOVED —
+  Drew's rule: the fleet's OpenCode comes only from the fork via the flake.)
+  Rollback to v1: re-add store path
+  /nix/store/3vz1db1ha1pkpnxla195zvsfvjxcdgav-opencode-1.18.31 (kept);
+  recipe in the same backup dir's ROLLBACK.md.
+- v2 serve has NO --pure flag and cannot run v1 plugins; the deployed
+  config's `plugin` array was emptied and ~/.config/opencode/plugin +
+  node_modules renamed to *.v1-disabled (with them present, v2 location
+  activation churns for minutes and models/prompt calls time out).
+- v2 serve REQUIRES a server password: OPENCODE_SERVER_PASSWORD is in the
+  service env (persisted at ~/tools/secrets.d/opencode-server-password,
+  mirrored in Bitwarden as `opencode.server-password`; install-opencode-
+  service.sh writes it each boot). Basic auth user `opencode`. v1's
+  unauthenticated access is gone — API consumers must send credentials.
+- v2 server API is under /api/* (spec at /openapi.json on the server);
+  v1 routes (/global/health, /session, prompt_async) no longer exist.
+- auth.json actually lives at ~/.local/share/opencode/auth.json (not
+  ~/.config/opencode). `opencode run` no longer hangs on stdin in v2.
+
+## Laptop SSH drops — ROOT CAUSED 2026-10-25 (MaxStartups, not "flakiness")
+- The laptop's sshd runs stock **MaxStartups 10:30:100** (no override in
+  /etc/ssh/sshd_config). New-connection setups through the tailnet route take
+  5–45s (all sandbox↔laptop traffic hairpins via the **NYC DERP relay**;
+  tailscale ping times out while SSH data flows), so each setup holds a
+  startup slot for seconds. Bursts >10 concurrent pre-auth setups (watch +
+  launchers + coordinators overlapping) get sshd's literal early-drop bytes
+  `Not allowed at this time` → client sees "Connection closed by UNKNOWN port
+  65535", rc 255. Established sessions are NEVER dropped. MaxStartups drops
+  are NOT logged at INFO — the journal shows only successful accepts, which
+  is why it looked like random flakiness that "recovers on its own".
+  Reproduced 2026-10-25: 14 parallel laptop-ssh.sh calls → 2 failed.
+- INTERIM FIX APPLIED 2026-10-25: ~/tools/laptop-ssh.sh now uses SSH
+  connection multiplexing (ControlMaster=auto, ControlPath
+  ~/.ssh/cm-%r@%h:%p, ControlPersist=600 — 600 chosen to bridge the 10-min
+  watch cadence). Verified: warm-master burst 14/14 OK (cold-start race can
+  still drop a couple while several clients race to create the master).
+- PERMANENT FIX (not yet applied): `services.openssh.settings.MaxStartups =
+  "100:30:300"` in the laptop's NixOS config + switch — time the switch when
+  no interactive laptop SSH is in use (sshd restart can take in-cgroup
+  session processes; the OpenCode server on 40181 is independent of sshd).

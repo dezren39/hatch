@@ -70,6 +70,9 @@ check_personal_links() {
         echo "[$START_DT] init: personal-link '$rel' pointed at $(readlink "$link") — re-pointing" >> "$LOG"
         ln -sfn "$target" "$link"
       fi
+      if [ ! -e "$target" ]; then
+        echo "[$START_DT] init: personal-link '$rel' DANGLING — target $target missing from repo" >> "$LOG"
+      fi
       continue
     fi
     if [ ! -e "$target" ]; then
@@ -127,10 +130,17 @@ run_step "nix-ensure" bash /home/hatch/tools/nix-ensure.sh
 run_step "nix-wrapper" bash /home/hatch/tools/install-nix-wrapper.sh
 run_step "nix-profile-sync" bash /home/hatch/tools/nix-profile-sync.sh
 run_step "mcpx-service" bash /home/hatch/tools/install-mcpx-service.sh
+run_step "opencode-service" bash /home/hatch/tools/install-opencode-service.sh
+run_step "board-agent-service" bash /home/hatch/tools/install-board-agent-service.sh
+run_step "muse-proxy-service" bash /home/hatch/tools/install-muse-proxy-service.sh
+run_step "agy-proxy-service" bash /home/hatch/tools/install-agy-proxy-service.sh
+run_step "commandcode-proxy-service" bash /home/hatch/tools/install-commandcode-proxy-service.sh
+run_step "proxy-supervisor-service" bash /home/hatch/tools/install-proxy-supervisor-service.sh
 run_step "bash-wrapper" bash /home/hatch/tools/install-bash-wrapper.sh
 run_step "go-check" bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
 run_step "rust-check" bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'
 # (future restore steps go here as run_step lines)
+run_step "services-verify" bash /home/hatch/tools/verify-services.sh
 
 # --- Post-init health snapshot ---
 NIX_VERSION=$(nix --version 2>/dev/null || echo "nix_broken")
@@ -142,6 +152,17 @@ QUOTA=$(/opt/hatch/bin/subscription-status status 2>/dev/null | tr '\n' '; ' || 
 END_DT=$(date '+%Y-%m-%d %H:%M:%S %Z')
 END_EPOCH=$(date +%s)
 INIT_SECS=$((END_EPOCH - START_EPOCH))
+
+# --- Airthings monitor: reinstall systemd units if missing ---
+# /etc/systemd/system does not survive sandbox recycles; the units live in
+# the persistent repo and install.sh is idempotent.
+ATM_DIR=/home/hatch/hatch-personal/scripts/airthings-monitor
+if [ -x "$ATM_DIR/install.sh" ]; then
+  if ! systemctl is-active --quiet airthings-monitor.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring airthings-monitor timer" >> "$LOG"
+    "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
 
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {

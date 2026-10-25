@@ -1,0 +1,20 @@
+# /etc/systemd/system/board-agent.service — General Board per-machine agent.
+# WRITTEN BY ~/tools/install-board-agent-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/board-agent.service (this file).
+[Unit]
+Description=General Board agent (machine=muse, store=http)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/hatch
+EnvironmentFile=/home/hatch/tools/secrets.d/board-agent.env
+ExecStart=/usr/bin/python3 /home/hatch/workspace/general-board/agent/agent.py run
+WorkingDirectory=/home/hatch/workspace/general-board
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

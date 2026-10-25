@@ -1,0 +1,12 @@
+# /etc/systemd/system/proxy-supervisor.timer — reconcile every 2 min.
+# WRITTEN BY ~/tools/install-proxy-supervisor-service.sh EVERY BOOT.
+# Canonical source: ~/tools/proxy-supervisor.timer.
+[Unit]
+Description=Reconcile fleet proxies every 2 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

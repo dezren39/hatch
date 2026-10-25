@@ -1,0 +1,21 @@
+# /etc/systemd/system/commandcode-proxy.service — commandcode-proxy bridge
+# (OpenAI-compatible HTTP API shelling to the CommandCode CLI).
+# WRITTEN BY ~/tools/install-commandcode-proxy-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/commandcode-proxy.service (this file).
+[Unit]
+Description=commandcode-proxy (OpenAI-compatible bridge to CommandCode CLI, port 18748)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# We run as root but the commandcode CLI keeps its login under $HOME —
+# point it at the persistent home, not /root.
+Environment=HOME=/home/hatch
+ExecStart=/home/hatch/tools/commandcode-proxy-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

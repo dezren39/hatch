@@ -1,0 +1,21 @@
+# /etc/systemd/system/agy-proxy.service — Antigravity CLI (agy) proxy bridge
+# (OpenAI-compatible HTTP API shelling to the `agy` CLI).
+# WRITTEN BY ~/tools/install-agy-proxy-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/agy-proxy.service (this file).
+[Unit]
+Description=agy-proxy (OpenAI-compatible bridge to Antigravity CLI, port 18743)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# We run as root but agy keeps its Google OAuth login under $HOME/.gemini —
+# point HOME at the persistent home, not /root.
+Environment=HOME=/home/hatch
+ExecStart=/home/hatch/tools/agy-proxy-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

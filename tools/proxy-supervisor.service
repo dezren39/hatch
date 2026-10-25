@@ -1,0 +1,18 @@
+# /etc/systemd/system/proxy-supervisor.service — fleet proxy supervisor
+# (hash-keyed A/B reconcile for the sandbox's proxy processes + the
+# tailnet relays to the laptop-hosted proxies).
+# WRITTEN BY ~/tools/install-proxy-supervisor-service.sh EVERY BOOT
+# (/etc is ephemeral). Canonical source: ~/tools/proxy-supervisor.service.
+[Unit]
+Description=proxy-supervisor (hash-keyed A/B reconcile for fleet proxies)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# State and endpoints live under the persistent home (endpoint.json
+# files in ~/.local/state), and the supervised proxies keep their
+# logins there too — never run this as /root's HOME.
+Environment=HOME=/home/hatch
+ExecStart=/usr/bin/node /home/hatch/tools/proxy-supervisor/proxy-supervise.mjs --config /home/hatch/tools/proxy-supervisor/config.json
+TimeoutStartSec=300

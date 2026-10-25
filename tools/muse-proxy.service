@@ -1,0 +1,21 @@
+# /etc/systemd/system/muse-proxy.service — muse-proxy bridge
+# (OpenAI-compatible HTTP API shelling to the Muse CLI).
+# WRITTEN BY ~/tools/install-muse-proxy-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/muse-proxy.service (this file).
+[Unit]
+Description=muse-proxy (OpenAI-compatible bridge to Muse CLI, port 18747)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# We run as root but the muse CLI keeps its OAuth login under $HOME —
+# point it at the persistent home, not /root.
+Environment=HOME=/home/hatch
+ExecStart=/home/hatch/tools/muse-proxy-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
