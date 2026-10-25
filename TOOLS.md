@@ -41,3 +41,4 @@ one-liners.
 - secrets.md — Bitwarden Secrets Manager + 1Password service accounts
 - opencode.md — OpenCode server on this sandbox + the v2 migration state
 - laptop.md — laptop SSH drops (MaxStartups) and the multiplexing fix
+- memory-cli.md — the mem CLI: append/search memory + topics without reading them
