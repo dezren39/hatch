@@ -89,6 +89,10 @@ workspace/supabase/**/__pycache__/
 # above so these paths stay out of the public repo (audit 2026-10-25).
 workspace/supabase/ainventory-import/sheets/
 workspace/supabase/ainventory-import/source/
+# (same two paths as SYMLINKS into hatch-personal — dir patterns above do
+# not match symlinks, so ignore the link paths too; relocated 2026-10-25)
+workspace/supabase/ainventory-import/sheets
+workspace/supabase/ainventory-import/source
 workspace/supabase/ainventory-import/SOURCE_SUMMARY.json
 workspace/supabase/muse-dev/backup/config.json
 go/
