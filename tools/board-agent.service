@@ -9,6 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/tmp
+Environment=GOTMPDIR=/home/hatch/tmp
 EnvironmentFile=/home/hatch/tools/secrets.d/board-agent.env
 ExecStart=/usr/bin/python3 /home/hatch/workspace/general-board/agent/agent.py run
 WorkingDirectory=/home/hatch/workspace/general-board

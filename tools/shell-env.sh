@@ -15,6 +15,29 @@ case ":${PATH}:" in
   *) export PATH="$PATH:$HOME/tools/bin" ;;
 esac
 
+# 1b. user tool dirs on PATH (append; no duplicates) — prebuilt user-level
+# installs live here (gopls in ~/.local/bin, npm-global MCP servers in
+# ~/.local/npm-global/bin; see tools/install-mcpx-servers.sh). The mcpx
+# daemon's unit PATH already carries both; shells need them too (2026-10-25).
+case ":${PATH}:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$PATH:$HOME/.local/bin" ;;
+esac
+case ":${PATH}:" in
+  *":$HOME/.local/npm-global/bin:"*) ;;
+  *) export PATH="$PATH:$HOME/.local/npm-global/bin" ;;
+esac
+
+# 1c. temp dir on the persistent volume. /tmp is a 512 MB tmpfs whose size
+# is set by the platform and CANNOT be enlarged from inside the sandbox
+# (locked mount owned by a parent user namespace; remount and nsenter both
+# fail — verified 2026-10-25). Big staging (npm downloads, go builds) has
+# repeatedly overflowed it, so shells default TMPDIR to ~/tmp (btrfs).
+# GOTMPDIR is set too: Go's testing.TempDir reads GOTMPDIR, not TMPDIR.
+[ -d "$HOME/tmp" ] || mkdir -p "$HOME/tmp" 2>/dev/null || true
+export TMPDIR="$HOME/tmp"
+export GOTMPDIR="$HOME/tmp"
+
 # 2. unknown command -> dispatcher (handles name[@version], then execs)
 command_not_found_handle() {
   exec /home/hatch/tools/dispatcher.sh "$@"

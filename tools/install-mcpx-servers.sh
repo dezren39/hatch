@@ -2,22 +2,52 @@
 # tools/install-mcpx-servers.sh — (re)install the lootbox-parity MCP server binaries.
 # Idempotent. Everything lands on the persistent volume (~/.local, ~/tools/bin,
 # ~/git), so a sandbox recycle only needs node (base image) + this script.
-# Versions pinned 2026-09-30; bump as needed.
+# Versions pinned 2026-09-30; codebase-memory + gopls pins added 2026-10-25.
+# NPM_PREFIX / LOCAL_BIN / GO may be overridden (scratch-prefix testing).
 set -euo pipefail
 
-NPM_PREFIX="$HOME/.local/npm-global"
+NPM_PREFIX="${NPM_PREFIX:-$HOME/.local/npm-global}"
+LOCAL_BIN="${LOCAL_BIN:-$HOME/.local/bin}"
 BIN="$HOME/tools/bin"
 CHROME_DIR="$HOME/.local/share/chrome"
+GO="${GO:-$HOME/tools/go/bin/go}"
 
-mkdir -p "$NPM_PREFIX" "$BIN" "$CHROME_DIR" \
+mkdir -p "$NPM_PREFIX" "$LOCAL_BIN" "$BIN" "$CHROME_DIR" \
   "$HOME/.local/share/fff" "$HOME/.local/share/opencode/worktree" "$HOME/git"
+
+# /tmp is a 512 MB tmpfs that CANNOT be enlarged from inside the sandbox
+# (platform-owned locked mount — see TOOLS.d/sandbox.md). Staging for the
+# installs below (codebase-memory's ~330 MB native binary, npm's fetch tree,
+# go's build work) overflows it and collides with other tools' spill, so
+# ALL temp work for this script goes to the persistent volume instead.
+mkdir -p "$HOME/tmp"
+export TMPDIR="$HOME/tmp"
+export GOTMPDIR="$HOME/tmp"
 
 # --- npm MCP servers (node comes from the base image) ---
 export PATH="$NPM_PREFIX/bin:$PATH"
 npm install -g --prefix "$NPM_PREFIX" \
   chrome-devtools-mcp \
-  mcp-remote \
-  codebase-memory-mcp@0.11.0
+  mcp-remote
+
+# --- codebase-memory-mcp (pinned; installed bare-name for the mcpx daemon) ---
+# The old npx launch form re-walked the registry + a 330 MB binary download
+# on every cold start and blew mcpx's initialize deadline (2026-10-25). A
+# pinned global install starts in ~3 s; skip when the version already matches.
+CBM_VER=0.12.1
+if [ "$("$NPM_PREFIX/bin/codebase-memory-mcp" --version 2>/dev/null | awk '{print $NF}')" != "$CBM_VER" ]; then
+  npm install -g --prefix "$NPM_PREFIX" "codebase-memory-mcp@$CBM_VER"
+fi
+
+# --- gopls (pinned; prebuilt via go install for the mcpx gopls-mcp-server) ---
+# The old launch form was `go run golang.org/x/tools/gopls@latest` on every
+# cold start: network re-resolution + a full gopls compile (~300 MB of build
+# spill) before initialize could answer — handshake deadlines on both the
+# sandbox and the laptop (2026-10-25). Prebuilt binary starts in ~7 s.
+GOPLS_VER=v0.24.0
+if [ "$("$LOCAL_BIN/gopls" version 2>/dev/null | awk '{print $NF}')" != "$GOPLS_VER" ]; then
+  GOBIN="$LOCAL_BIN" "$GO" install "golang.org/x/tools/gopls@$GOPLS_VER"
+fi
 
 # --- fff-mcp (dmtrKovalenko/fff nightly; not in nixpkgs, not on npm) ---
 if [ ! -x "$BIN/fff-mcp" ]; then
@@ -53,4 +83,4 @@ if [ ! -d "$HOME/git/nix/.git" ]; then
   git clone --quiet https://github.com/dezren39/nix.git "$HOME/git/nix"
 fi
 
-echo "mcpx servers installed. Restart the daemon: systemctl restart mcpx"
+echo "mcpx servers installed (codebase-memory-mcp $CBM_VER, gopls $GOPLS_VER). Restart the daemon: systemctl restart mcpx"

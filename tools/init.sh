@@ -129,6 +129,7 @@ run_step() { # name, then command + args
 run_step "nix-ensure" bash /home/hatch/tools/nix-ensure.sh
 run_step "nix-wrapper" bash /home/hatch/tools/install-nix-wrapper.sh
 run_step "nix-profile-sync" bash /home/hatch/tools/nix-profile-sync.sh
+run_step "mcpx-servers" bash /home/hatch/tools/install-mcpx-servers.sh
 run_step "mcpx-service" bash /home/hatch/tools/install-mcpx-service.sh
 run_step "opencode-service" bash /home/hatch/tools/install-opencode-service.sh
 run_step "board-agent-service" bash /home/hatch/tools/install-board-agent-service.sh

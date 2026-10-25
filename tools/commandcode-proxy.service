@@ -12,6 +12,8 @@ Type=simple
 # We run as root but the commandcode CLI keeps its login under $HOME —
 # point it at the persistent home, not /root.
 Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/tmp
+Environment=GOTMPDIR=/home/hatch/tmp
 ExecStart=/home/hatch/tools/commandcode-proxy-start.sh
 Restart=on-failure
 RestartSec=5

@@ -11,6 +11,8 @@ Type=simple
 # We run as root but opencode keeps config/state under $HOME — point it at
 # the persistent home, not /root.
 Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/tmp
+Environment=GOTMPDIR=/home/hatch/tmp
 ExecStart=/home/hatch/tools/opencode-serve-start.sh
 Restart=on-failure
 RestartSec=5
