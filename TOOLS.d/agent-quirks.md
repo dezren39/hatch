@@ -15,3 +15,6 @@
 - The exec tool's `stdin` parameter CONFLICTS with shell heredocs (`python3 - <<'EOF'`): the heredoc wins and the `stdin` parameter content is silently dropped — the script runs seeing empty stdin, with no error. Three consecutive Cloudflare auth checks ran with an empty token because of this and reported "not authenticated".
 - Rule: when a script needs stdin (e.g. a secret), put the code in `python3 -c '...'` (no single quotes inside) and let the `stdin` parameter carry the secret. Never combine `<<'EOF'` with the `stdin` parameter.
 - Related: Python's `http.client` ignores proxy env vars and tries direct TLS (fails in the sandbox with SSL WRONG_VERSION_NUMBER); `urllib.request` honors the egress proxy env vars. Use urllib for outbound HTTPS from exec.
+
+## Browser tasks and secrets (2026-10-25)
+- A browser task will NOT return secret values (e.g. Slack app tokens) in its report, even when Drew explicitly instructs "pass the values through you" — the refusal is built into the browser layer. Working routes for token transfer: Drew pastes the value in chat → Muse files it into Bitwarden Secrets Manager (sha-verified round-trip, temp copies shredded); or Drew takes over the browser tab and copies the value into the vault himself.

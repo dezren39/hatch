@@ -13,6 +13,19 @@ Type=simple
 Environment=HOME=/home/hatch
 Environment=TMPDIR=/home/hatch/tmp
 Environment=GOTMPDIR=/home/hatch/tmp
+# ~/.config/mcpx/config.json is a symlink to the code repo's .mcpx.json,
+# which is written in laptop form: bare command names (npx, go) and
+# /home/user paths. The PATH below lets the daemon resolve the bare names
+# when it warms servers at boot, the ExecStartPre shims make the laptop
+# paths true on this host, WorkingDirectory pins the spawn cwd so the
+# root-less codedb warms against the git tree, and the EnvironmentFile
+# (secrets.d, never committed) carries the egress proxy for warm spawns.
+Environment=PATH=/home/hatch/tools/bin:/home/hatch/.local/npm-global/bin:/home/hatch/.local/bin:/opt/hatch-image/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/home/hatch/tools/secrets.d/mcpx-daemon.env
+WorkingDirectory=/home/hatch/git
+ExecStartPre=/bin/ln -sfn /home/hatch /home/user
+ExecStartPre=/bin/mkdir -p /run/current-system/sw/bin
+ExecStartPre=/bin/ln -sfn /home/hatch/.local/share/chrome/chrome-headless-shell-linux64/chrome-headless-shell /run/current-system/sw/bin/chromium
 ExecStart=/usr/local/bin/mcpx daemon
 Restart=on-failure
 RestartSec=5

@@ -143,3 +143,16 @@
   v1 routes (/global/health, /session, prompt_async) no longer exist.
 - auth.json actually lives at ~/.local/share/opencode/auth.json (not
   ~/.config/opencode). `opencode run` no longer hangs on stdin in v2.
+
+- **Two OpenAI logins on the sandbox OpenCode (found 2026-10-25 ~09:43):**
+  the credential store (port 4096) holds the legacy `chatgpt-browser`
+  OAuth (account 0227321a…, the one mirrored in auth.json) as INACTIVE,
+  plus an "OpenAI 2" `chatgpt-token-sharing` login as ACTIVE (short-lived
+  access token, ~1h). Anything reading credentials through OpenCode's
+  `GET /api/credential` (OpenChamber's quota providers included) sees
+  only the active token-sharing login, whose token OpenAI refuses on the
+  wham/usage endpoint (`rejected_by_access_enforcement`) — the Usage
+  page and `openchamber quota codex` show the "Sign in with ChatGPT"
+  message while it stays active. The direct wham/usage read with the
+  auth.json token still works. A second `opencode serve` on port 4098
+  (started 2026-10-25 09:00, different server password) also exists.
