@@ -21,6 +21,8 @@ Commands:
   Example: `mem show nix-notes`
 
 Limits:
+- `mem add --force "<reason>" "<text>"` bypasses the size limit; the reason
+  is required and the override is logged to ~/memory/mem-events.log.
 - `mem add` refuses text over **600 chars** (exit 3) — that's MEMORY.md's
   hygiene rule enforced mechanically. Put the long text in a topic with
   `mem topic`, then `mem add` a short summary + pointer.

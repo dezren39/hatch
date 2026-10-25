@@ -14,7 +14,7 @@ import fcntl
 import os
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 
 MEM_HOME = os.environ.get("MEM_HOME", "/home/hatch")
 MEMORY_MD = os.path.join(MEM_HOME, "MEMORY.md")
@@ -87,12 +87,22 @@ def cmd_topics(_args):
 
 
 # ------------------------------------------------------------------- add ---
+EVENTS_LOG = os.path.join(MEM_HOME, "memory", "mem-events.log")
+
+
 def cmd_add(args):
+    force_reason = None
+    if args and args[0] == "--force":
+        if len(args) != 3 or not args[1].strip():
+            print('usage: mem add --force "<reason>" "<text>"', file=sys.stderr)
+            return 2
+        force_reason = args[1].strip()
+        args = args[2:]
     if len(args) != 1:
         print('usage: mem add "<text>"', file=sys.stderr)
         return 2
     text = args[0]
-    if len(text) > ADD_LIMIT:
+    if len(text) > ADD_LIMIT and force_reason is None:
         print(
             f"refused: {len(text)} chars exceeds the {ADD_LIMIT}-char MEMORY.md "
             "bullet limit. Long detail belongs in a topic file: use "
@@ -103,6 +113,14 @@ def cmd_add(args):
         return 3
     bullet = f"- {text}\n"
     with Lock():
+        if force_reason is not None:
+            ts = datetime.now().astimezone().isoformat(timespec="seconds")
+            flat = " ".join(text.split())[:120]
+            event = (
+                f"{ts} | override | reason: {force_reason} | "
+                f"chars: {len(text)} | text: {flat}\n"
+            )
+            append_bytes(EVENTS_LOG, event.encode("utf-8"))
         content = read_text(MEMORY_MD)
         lines = content.splitlines(keepends=True)
         # Find the last "## Inbox" section, if any.
