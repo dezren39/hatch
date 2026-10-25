@@ -1,13 +1,10 @@
 {
   "mcpServers": {
-    "codedb": {
-      "command": "/home/hatch/bin/codedb",
+    "mcpx": {
+      "command": "mcpx",
       "args": [
-        "mcp"
+        "serve"
       ]
-    },
-    "deepwiki": {
-      "httpUrl": "https://mcp.deepwiki.com/mcp"
     }
   }
 }
