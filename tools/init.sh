@@ -257,6 +257,19 @@ if [ -x "$RS_DIR/install-sampler-units.sh" ]; then
   fi
 fi
 
+# --- Hatch-personal autocommit: reinstall systemd units if missing ---
+# Same pattern as above; the units + installer live in hatch-personal
+# (scripts/hatch-autocommit). Every-minute commit+push of everything
+# uncommitted in hatch-personal, so a repeat of the 2026-10-25 deletion
+# incident can never lose more than ~1 minute of uncommitted work.
+AC_DIR=/home/hatch/hatch-personal/scripts/hatch-autocommit
+if [ -x "$AC_DIR/install-autocommit-units.sh" ]; then
+  if ! systemctl is-active --quiet hatch-autocommit.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring hatch-autocommit timer" >> "$LOG"
+    timeout 120 "$AC_DIR/install-autocommit-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
