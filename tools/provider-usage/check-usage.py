@@ -136,6 +136,62 @@ def main():
     with open(SNAPSHOT, "w") as f:
         json.dump(snap, f, indent=1)
 
+    # --- usage & billing hub snapshot records (design §4, writer (c)) -----
+    # Additive only: the JSON snapshot above is unchanged for its existing
+    # consumers. The run's observations are ALSO appended as §4 snapshot
+    # records to the hub outbox beside the snapshot; the fleet-feed
+    # collector drains the outbox into the feed, and the laptop store
+    # dedupes on (service, metric, ts, value), so repeats append nothing.
+    # Record shape mirrors src/snapshot-records.ts recordsFromProviderUsage
+    # in the pm-stack aggregator (developing-today/code).
+    try:
+        recs = []
+        ts = snap["generated_at"]
+        if isinstance(snap.get("sessions"), list):
+            recs.append(
+                {
+                    "ts": ts,
+                    "serviceId": "opencode-server",
+                    "metricId": "sessions-listed",
+                    "value": len(snap["sessions"]),
+                    "unit": "count",
+                    "source": "api",
+                    "observedBy": "check-usage",
+                }
+            )
+        rate_limit = ((snap.get("codex_usage") or {}).get("usage") or {}).get(
+            "rate_limit"
+        ) or {}
+        window_names = {604800: "7-day", 18000: "5-hour"}
+        for window in (rate_limit.get("primary_window"), rate_limit.get("secondary_window")):
+            if not isinstance(window, dict):
+                continue
+            metric = window_names.get(window.get("limit_window_seconds"))
+            if metric and isinstance(window.get("used_percent"), (int, float)):
+                recs.append(
+                    {
+                        "ts": ts,
+                        "serviceId": "openai:codex",
+                        "metricId": metric,
+                        "value": window["used_percent"],
+                        "unit": "pct",
+                        "limit": 100,
+                        "source": "api",
+                        "observedBy": "check-usage",
+                    }
+                )
+        if recs:
+            outbox = os.path.join(
+                HOME,
+                "workspace/goals/keep-the-four-repos-healthy/hidden_files/usage-snapshot-outbox.jsonl",
+            )
+            with open(outbox, "a") as f:
+                for r in recs:
+                    f.write(json.dumps(r) + "\n")
+            print(f"hub outbox: appended {len(recs)} snapshot record(s)")
+    except Exception as e:  # noqa: BLE001
+        print(f"hub outbox append failed (non-fatal): {type(e).__name__}")
+
     # --- compact summary ------------------------------------------------------
     print(f"server: {snap['server']}")
     for pid, p in sorted(snap["providers"].items()):
