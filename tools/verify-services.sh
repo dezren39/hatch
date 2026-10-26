@@ -76,7 +76,9 @@ verify() { # display-name check-fn installer
 # autostarted on the sandbox — do not "repair" them back to life here.
 # verify mcpx check_mcpx /home/hatch/tools/install-mcpx-service.sh
 # verify opencode-serve check_opencode_serve /home/hatch/tools/install-opencode-service.sh
-verify muse-proxy check_muse_proxy /home/hatch/tools/install-muse-proxy-service.sh
+# DISABLED by Drew 2026-10-25 (20:52 follow-up): muse-proxy intentionally
+# not autostarted on the sandbox — do not "repair" it back to life here.
+# verify muse-proxy check_muse_proxy /home/hatch/tools/install-muse-proxy-service.sh
 verify board-agent check_board_agent /home/hatch/tools/install-board-agent-service.sh
 
 [ "$FAILURES" -eq 0 ]

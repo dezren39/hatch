@@ -159,13 +159,21 @@ run_step "nix-profile-sync" 120 bash /home/hatch/tools/nix-profile-sync.sh
 # run_step "mcpx-service" 180 bash /home/hatch/tools/install-mcpx-service.sh
 # run_step "opencode-service" 300 bash /home/hatch/tools/install-opencode-service.sh
 run_step "board-agent-service" 180 bash /home/hatch/tools/install-board-agent-service.sh
-run_step "muse-proxy-service" 180 bash /home/hatch/tools/install-muse-proxy-service.sh
+# DISABLED by Drew 2026-10-25 (20:52 follow-up): muse-proxy autostart off
+# (also removed from proxy-supervisor config). Do not re-enable.
+# run_step "muse-proxy-service" 180 bash /home/hatch/tools/install-muse-proxy-service.sh
 # DISABLED by Drew 2026-10-25: agy-proxy autostart off (also removed from
 # proxy-supervisor config). Do not re-enable.
 # run_step "agy-proxy-service" 180 bash /home/hatch/tools/install-agy-proxy-service.sh
-run_step "commandcode-proxy-service" 180 bash /home/hatch/tools/install-commandcode-proxy-service.sh
-run_step "claude-code-proxy-service" 180 bash /home/hatch/tools/install-claude-code-proxy-service.sh
-run_step "proxy-supervisor-service" 420 bash /home/hatch/tools/install-proxy-supervisor-service.sh
+# DISABLED by Drew 2026-10-25 (20:52 follow-up): commandcode-proxy +
+# claude-code-proxy autostart off (also removed from proxy-supervisor
+# config). Do not re-enable.
+# run_step "commandcode-proxy-service" 180 bash /home/hatch/tools/install-commandcode-proxy-service.sh
+# run_step "claude-code-proxy-service" 180 bash /home/hatch/tools/install-claude-code-proxy-service.sh
+# DISABLED by Drew 2026-10-25 (20:52 follow-up): proxy-supervisor off —
+# its config now manages zero relays (muse/commandcode/codex all removed),
+# so the timer and its installer no longer run. Do not re-enable.
+# run_step "proxy-supervisor-service" 420 bash /home/hatch/tools/install-proxy-supervisor-service.sh
 run_step "bash-wrapper" 120 bash /home/hatch/tools/install-bash-wrapper.sh
 # Deferred heavy work: mcpx-servers performs unpinned network installs
 # (npm/go/gh/Chrome downloads; 119s under load on 2026-10-25) and used

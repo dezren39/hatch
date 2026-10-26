@@ -23,30 +23,14 @@ SUP="/usr/bin/node /home/hatch/tools/proxy-supervisor/proxy-supervise.mjs --conf
 # shellcheck disable=SC2086 # $SUP is a command line; word splitting intended
 HOME=/home/hatch timeout --signal=TERM --kill-after=15 300 $SUP || true
 
-# Verify: the LOCAL proxies must be healthy on their canonical ports.
-# The relays are reported but not fatal here — their /health is
-# end-to-end to the laptop, which may legitimately be asleep; the
-# 2-minute timer keeps retrying.
+# Verify: health gate REMOVED 2026-10-25 (Drew, 20:52 follow-up). All
+# sandbox provider relays are now disabled and the supervisor config
+# manages zero proxies: muse-proxy (18747) and commandcode-proxy (18748)
+# left the must-be-healthy list, the codex relay (18744) left this report
+# (18743/18745/18746 already went earlier today). An absent proxy port is
+# the intended state, not a failure — this installer now only installs
+# the (disabled) units and runs a no-op reconcile. init.sh no longer
+# calls it at all; it remains for a deliberate manual restore.
 fail=0
-# Port 18743 (agy-proxy) removed from the must-be-healthy list 2026-10-25:
-# Drew disabled agy-proxy autostart on the sandbox, and it is no longer in
-# the supervisor config — an absent 18743 is the intended state, not a failure.
-for port in 18747 18748; do
-  if curl --noproxy '*' -s -m 3 "http://127.0.0.1:$port/health" 2>/dev/null | grep -q '"status": "ok"\|\"status\":\"ok\"'; then
-    echo "install-proxy-supervisor-service: local proxy on $port healthy"
-  else
-    echo "install-proxy-supervisor-service: WARNING local proxy on $port NOT healthy"
-    fail=1
-  fi
-done
-# Relays 18745/18746 removed from this report 2026-10-25 (Drew): the
-# antigravity-ls + design-code relays are disabled on the sandbox and no
-# longer in the supervisor config, so probing them only adds noise.
-for port in 18744; do
-  if curl --noproxy '*' -s -m 5 "http://127.0.0.1:$port/health" 2>/dev/null | grep -q '"status": "ok"\|\"status\":\"ok\"'; then
-    echo "install-proxy-supervisor-service: relay on $port healthy (laptop backend up)"
-  else
-    echo "install-proxy-supervisor-service: relay on $port not answering end-to-end (laptop backend may be down)"
-  fi
-done
+echo "install-proxy-supervisor-service: no managed proxies (all relays disabled by Drew 2026-10-25) — nothing to health-gate"
 exit $fail
