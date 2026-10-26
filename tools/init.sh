@@ -231,6 +231,18 @@ if [ -x "$FFC_DIR/scripts/install-collector-units.sh" ]; then
   fi
 fi
 
+# --- Resource sampler: reinstall systemd unit if missing ---
+# Same pattern as above; the unit + installer live in hatch-personal
+# (scripts/resource-sampler). 1s load/mem/top-process log to
+# ~/logs/resource so the minutes before any crash stay on disk.
+RS_DIR=/home/hatch/hatch-personal/scripts/resource-sampler
+if [ -x "$RS_DIR/install-sampler-units.sh" ]; then
+  if ! systemctl is-active --quiet resource-sampler.service 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring resource sampler" >> "$LOG"
+    timeout 120 "$RS_DIR/install-sampler-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
