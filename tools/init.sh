@@ -106,6 +106,13 @@ check_personal_links() {
 }
 check_personal_links
 
+# Workspace symlink layer (27 relocated trees + supabase private subsets +
+# archer-slack state dir): repaired by tools/restore-workspace-links.sh,
+# which is quiet when every link is correct and never clobbers a real
+# path. Runs before the warm-boot exit, like the guard above; failures
+# are logged, never fatal to init.
+/home/hatch/tools/restore-workspace-links.sh >> "$LOG" 2>&1 || echo "[$START_DT] init: restore-workspace-links reported a problem (see above)" >> "$LOG"
+
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$BOOT_ID" ] && nix_works; then
   echo "[$START_DT] init: already initialized for boot $BOOT_ID, nothing to do" >> "$LOG"
   exit 0
