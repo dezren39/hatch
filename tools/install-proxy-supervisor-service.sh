@@ -17,14 +17,21 @@ systemctl enable proxy-supervisor.timer >/dev/null 2>&1 || true
 systemctl start proxy-supervisor.timer || true
 
 SUP="/usr/bin/node /home/hatch/tools/proxy-supervisor/proxy-supervise.mjs --config /home/hatch/tools/proxy-supervisor/config.json"
-HOME=/home/hatch $SUP || true
+# Bounded: the reconcile does health checks against laptop backends and
+# A/B rolls — `|| true` guards failure, not hanging. The 2-minute timer
+# retries, so a timed-out reconcile here is not fatal.
+# shellcheck disable=SC2086 # $SUP is a command line; word splitting intended
+HOME=/home/hatch timeout --signal=TERM --kill-after=15 300 $SUP || true
 
 # Verify: the LOCAL proxies must be healthy on their canonical ports.
 # The relays are reported but not fatal here — their /health is
 # end-to-end to the laptop, which may legitimately be asleep; the
 # 2-minute timer keeps retrying.
 fail=0
-for port in 18743 18747 18748; do
+# Port 18743 (agy-proxy) removed from the must-be-healthy list 2026-10-25:
+# Drew disabled agy-proxy autostart on the sandbox, and it is no longer in
+# the supervisor config — an absent 18743 is the intended state, not a failure.
+for port in 18747 18748; do
   if curl --noproxy '*' -s -m 3 "http://127.0.0.1:$port/health" 2>/dev/null | grep -q '"status": "ok"\|\"status\":\"ok\"'; then
     echo "install-proxy-supervisor-service: local proxy on $port healthy"
   else
@@ -32,7 +39,10 @@ for port in 18743 18747 18748; do
     fail=1
   fi
 done
-for port in 18744 18745 18746; do
+# Relays 18745/18746 removed from this report 2026-10-25 (Drew): the
+# antigravity-ls + design-code relays are disabled on the sandbox and no
+# longer in the supervisor config, so probing them only adds noise.
+for port in 18744; do
   if curl --noproxy '*' -s -m 5 "http://127.0.0.1:$port/health" 2>/dev/null | grep -q '"status": "ok"\|\"status\":\"ok\"'; then
     echo "install-proxy-supervisor-service: relay on $port healthy (laptop backend up)"
   else
