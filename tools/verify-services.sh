@@ -72,8 +72,10 @@ verify() { # display-name check-fn installer
   FAILURES=$((FAILURES + 1))
 }
 
-verify mcpx check_mcpx /home/hatch/tools/install-mcpx-service.sh
-verify opencode-serve check_opencode_serve /home/hatch/tools/install-opencode-service.sh
+# DISABLED by Drew 2026-10-25: mcpx + opencode-serve intentionally not
+# autostarted on the sandbox — do not "repair" them back to life here.
+# verify mcpx check_mcpx /home/hatch/tools/install-mcpx-service.sh
+# verify opencode-serve check_opencode_serve /home/hatch/tools/install-opencode-service.sh
 verify muse-proxy check_muse_proxy /home/hatch/tools/install-muse-proxy-service.sh
 verify board-agent check_board_agent /home/hatch/tools/install-board-agent-service.sh
 

@@ -154,11 +154,15 @@ run_step() {
 run_step "nix-ensure" 600 bash /home/hatch/tools/nix-ensure.sh
 run_step "nix-wrapper" 120 bash /home/hatch/tools/install-nix-wrapper.sh
 run_step "nix-profile-sync" 120 bash /home/hatch/tools/nix-profile-sync.sh
-run_step "mcpx-service" 180 bash /home/hatch/tools/install-mcpx-service.sh
-run_step "opencode-service" 300 bash /home/hatch/tools/install-opencode-service.sh
+# DISABLED by Drew 2026-10-25: mcpx + opencode-serve autostart off on the
+# sandbox (units left installed; manual start still works). Do not re-enable.
+# run_step "mcpx-service" 180 bash /home/hatch/tools/install-mcpx-service.sh
+# run_step "opencode-service" 300 bash /home/hatch/tools/install-opencode-service.sh
 run_step "board-agent-service" 180 bash /home/hatch/tools/install-board-agent-service.sh
 run_step "muse-proxy-service" 180 bash /home/hatch/tools/install-muse-proxy-service.sh
-run_step "agy-proxy-service" 180 bash /home/hatch/tools/install-agy-proxy-service.sh
+# DISABLED by Drew 2026-10-25: agy-proxy autostart off (also removed from
+# proxy-supervisor config). Do not re-enable.
+# run_step "agy-proxy-service" 180 bash /home/hatch/tools/install-agy-proxy-service.sh
 run_step "commandcode-proxy-service" 180 bash /home/hatch/tools/install-commandcode-proxy-service.sh
 run_step "claude-code-proxy-service" 180 bash /home/hatch/tools/install-claude-code-proxy-service.sh
 run_step "proxy-supervisor-service" 420 bash /home/hatch/tools/install-proxy-supervisor-service.sh
@@ -168,7 +172,9 @@ run_step "bash-wrapper" 120 bash /home/hatch/tools/install-bash-wrapper.sh
 # to sit ahead of every service restore. mcpx-service above skips
 # quietly if the daemon binary is absent, and services-verify (last)
 # re-runs its installer, so a cold mcpx still converges within the run.
-run_step "mcpx-servers" 900 bash /home/hatch/tools/install-mcpx-servers.sh
+# DISABLED by Drew 2026-10-25: mcpx-servers gated with the mcpx service
+# above (no daemon to serve them while mcpx autostart is off). Do not re-enable.
+# run_step "mcpx-servers" 900 bash /home/hatch/tools/install-mcpx-servers.sh
 run_step "go-check" 60 bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
 run_step "rust-check" 60 bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'
 # (future restore steps go here as run_step lines)
