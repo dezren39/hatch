@@ -3,7 +3,8 @@
 Usage: turso-exec.py <db-name> <sql-file>
 Reads platform token from ~/.config/turso/settings.json. Prints pipeline JSON results.
 Never prints tokens."""
-import json, sys, urllib.request, urllib.error
+import json
+import os, sys, urllib.request, urllib.error
 
 def req(method, url, tok, body=None):
     data = json.dumps(body).encode() if body is not None else None
