@@ -20,7 +20,7 @@ def req(method, url, tok, body=None):
 def main():
     db, sqlfile = sys.argv[1], sys.argv[2]
     org = "dezren39"
-    platform = json.load(open("/home/hatch/.config/turso/settings.json"))["token"]
+    platform = json.load(open(os.path.expanduser("~/.config/turso/settings.json")))["token"]
     s, b = req("POST", f"https://api.turso.tech/v1/organizations/{org}/databases/{db}/auth/tokens", platform, {})
     if s != 200:
         print("DB token mint failed", s, b[:300]); sys.exit(1)
