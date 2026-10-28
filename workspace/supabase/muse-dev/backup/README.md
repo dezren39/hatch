@@ -27,7 +27,9 @@ Supabase Free has **no backups**. This script is the backup system (Drew, 2026-1
 ## Run it
 ```sh
 # needs: python3, pg_dump (postgresql client), zstd (or set "compressor":"gzip"),
-# and either bws (with BWS_ACCESS_TOKEN exported) or env vars set:
+# and either bws (with BWS_ACCESS_TOKEN exported; the script resolves bws via
+# $BWS_BIN, then PATH, then the known install ~/tools/bin/bws, so a minimal
+# cron PATH without ~/tools/bin still works) or env vars set:
 #   SUPABASE_DB_PASSWORD, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
 python3 supabase_backup.py            # back up now
 python3 supabase_backup.py --if-due   # only if older than interval_hours (12)

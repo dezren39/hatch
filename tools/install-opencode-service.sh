@@ -30,7 +30,10 @@ CF_TOKEN=""
 if [ -f /home/hatch/tools/bws-env.sh ] && [ -n "${HTTPS_PROXY:-}" ]; then
   # shellcheck disable=SC1091
   source /home/hatch/tools/bws-env.sh >/dev/null 2>&1
-  CF_TOKEN="$("/home/hatch/tools/bin/bws" secret list -o json 2>/dev/null | jq -r '.[] | select(.key=="cloudflare.api-token-ai-inference") | .value' | head -1)"
+  # Bounded: a stalled egress proxy / Bitwarden call must not hang this
+  # installer before the unit is even written — on timeout CF_TOKEN is
+  # empty and we fall through to the keep-existing-env path below.
+  CF_TOKEN="$(timeout 30 "/home/hatch/tools/bin/bws" secret list -o json 2>/dev/null | jq -r '.[] | select(.key=="cloudflare.api-token-ai-inference") | .value' | head -1)"
 fi
 if [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
   TMP_ENV="$(mktemp "$SECRETS_DIR/.opencode-serve.env.XXXXXX")"

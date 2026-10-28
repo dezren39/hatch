@@ -36,6 +36,25 @@ if [ -f "$MARKER" ] && [ "$(cat "$MARKER" 2>/dev/null || echo none)" = "$BOOT_ID
   exit 0
 fi
 
+# --- Stale-init detector (report only; never kills, never spawns) ---
+# Every init step is timeout-bounded, so an init still holding the lock
+# past STALE_INIT_SECS is stuck on something outside the step model.
+# Without this, ensure would exit 0 silently on every poll forever and
+# no failure would ever surface (STATUS is only written at END).
+STALE_INIT_SECS=5400
+exec 7>"$LOG_DIR/.init.lock"
+if ! flock -n 7; then
+  INIT_PID=$(pgrep -f 'tools/init\.sh' 2>/dev/null | sort -n | head -1)
+  if [ -n "${INIT_PID:-}" ]; then
+    INIT_AGE=$(ps -o etimes= -p "$INIT_PID" 2>/dev/null | tr -d ' ')
+    if [ -n "${INIT_AGE:-}" ] && [ "$INIT_AGE" -gt "$STALE_INIT_SECS" ] 2>/dev/null; then
+      echo "init: WARNING init.sh (pid $INIT_PID) has held the init lock for ${INIT_AGE}s (> ${STALE_INIT_SECS}s) — it appears stuck; see $LOG"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init-ensure: stale init detected pid=$INIT_PID age=${INIT_AGE}s" >> "$LOG"
+    fi
+  fi
+fi
+exec 7>&-
+
 # --- Cold path: spawn init detached, exactly once, return immediately ---
 if [ ! -x "$INIT" ]; then
   echo "init: FAILED TO START: $INIT missing or not executable"

@@ -96,9 +96,9 @@ print("MODEL_VALUE_MATCH:", match_note)
 summary = {
     "workbook": {
         "name": "ai_model_benchmark_inventory_advanced_2026-10-21.xlsx",
-        "modifiedTime": "2026-10-25T13:08:29.837Z",
+        "modifiedTime": "2026-10-28T13:09:08.064Z",
         "driveFileId": "1v2cGy9Bb8qwC7lIRp-r8I2m6e4u6WDxV",
-        "note": "Drive canonical updated 2026-10-25 by Coding Plan Watch (final md5 910140861ade262eda03d2f0f4dd4be7 after same-day correction): no material change confirmed in the targeted scan since 2026-10-24; +1 Maintenance_Log run row (24) and +1 correction row (25) recording that Meta WAS directly verified on 2026-10-25 via live browser (dev.meta.ai/products/muse-code: Everyday $5 / High $15 5x / Power $50 20x / Maximum $200 80x, 10-50 prompts per 5h - baseline exact; the old docs/pricing URL now returns a page-not-available notice) while Tailscale failed again with ERR_CONNECTION_RESET (last direct verification 2026-10-21; Silver/Gold/Platinum support-tier report still unverified). No Plan_Events or catalog changes. Noted not recorded: GitHub Actions Linux 2-core $0.006/min is a 2026-01-01 pre-baseline reduction with no catalog row. Archives: AInventory_Archive_2026-10-25_0800-pre.xlsx, AInventory_Archive_2026-10-25_0804.xlsx, AInventory_Archive_2026-10-25_0804-pre-correction.xlsx, AInventory_Archive_2026-10-25_0808.xlsx",
+        "note": "Drive canonical updated 2026-10-28 by Coding Plan Watch (md5 b108928bf7ba71f0e649ee962d541958): targeted scan since 2026-10-27 plus seven-day lookback found NO material change - no Plan_Events appended, only +1 Maintenance_Log row (28). All tracked prices/limits/lineups re-verified unchanged on official sources, incl. Command Code GOAT up to $100 / Pro up to $110 docs read first-hand (consistent with the 2026-10-27 update) and Meta Muse Code directly verified 2026-10-28 via live browser (baseline exact). Tailscale failed again (ERR_CONNECTION_RESET; last direct verification 2026-10-21). Unverified cluster claims of 2026-10-28 GitHub changelog entries were not confirmed first-hand and not recorded. Archives: AInventory_Archive_2026-10-28_0800-pre.xlsx, AInventory_Archive_2026-10-28_0809.xlsx",
     },
     "model_value_csv": {
         "name": "model_value_data.csv",

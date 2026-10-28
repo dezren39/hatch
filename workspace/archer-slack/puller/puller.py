@@ -64,15 +64,28 @@ class SlackClient:
             API_BASE + method, data=body, method="POST",
             headers={"Authorization": "Bearer " + self._token,
                      "Content-Type": "application/x-www-form-urlencoded"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                retry = e.headers.get("Retry-After", "?")
-                raise SlackAPIError(f"ratelimited on {method} "
-                                    f"(retry after {retry}s)")
-            raise SlackAPIError(f"HTTP {e.code} on {method}")
+        data = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    retry = e.headers.get("Retry-After", "?")
+                    raise SlackAPIError(f"ratelimited on {method} "
+                                        f"(retry after {retry}s)")
+                raise SlackAPIError(f"HTTP {e.code} on {method}")
+            except (ConnectionError, TimeoutError,
+                    urllib.error.URLError) as e:
+                # Transient transport failure (Slack intermittently closes
+                # connections: http.client.RemoteDisconnected). Retry with
+                # backoff — pulls are idempotent (watermark + seen-set).
+                if attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                raise SlackAPIError(
+                    f"transport error on {method} after 3 attempts: {e}")
         if not data.get("ok", False):
             raise SlackAPIError(f"{method}: {data.get('error', 'unknown')}")
         return data
@@ -196,9 +209,23 @@ def pull_channel(client, conn, channel, dry_run=False, overlap_seconds=0,
         "AND CAST(thread_ts AS REAL) > ? ORDER BY thread_ts DESC LIMIT ?",
         (channel, cutoff, max_threads)).fetchall()
     for thread_ts, thread_wm in rows:
-        replies = _paged(client, "conversations.replies", "messages",
-                          channel=channel, ts=thread_ts,
-                          oldest=thread_wm, inclusive=False, limit=200)
+        try:
+            replies = _paged(client, "conversations.replies", "messages",
+                              channel=channel, ts=thread_ts,
+                              oldest=thread_wm, inclusive=False, limit=200)
+        except SlackAPIError as e:
+            # One bad thread must not poison the whole channel pull.
+            # invalid_arguments is permanent (e.g. a thread_broadcast reply
+            # tracked as a parent — Slack will never accept it), so drop the
+            # thread from the sweep. Anything else (transport after retries)
+            # keeps its row and is retried next cycle.
+            print(f"puller: thread {thread_ts} in {channel} skipped: {e}",
+                  file=sys.stderr)
+            if "invalid_arguments" in str(e):
+                conn.execute(
+                    "DELETE FROM threads WHERE channel_id = ? "
+                    "AND thread_ts = ?", (channel, thread_ts))
+            continue
         new_thread_wm, new_thread_wm_str = float(thread_wm), thread_wm
         for rep in sorted(replies, key=lambda m: float(m.get("ts", 0))):
             rts = rep.get("ts")

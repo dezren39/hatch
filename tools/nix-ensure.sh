@@ -69,7 +69,8 @@ ensure_nixbld_users() {
 ensure_nixbld_users
 
 nix_works() {
-  [ -x "$PROFILE_NIX" ] && "$PROFILE_NIX" eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
+  # Bounded: a wedged store lock must not stall init's first step.
+  [ -x "$PROFILE_NIX" ] && timeout 30 "$PROFILE_NIX" eval --impure --expr '1 + 1' 2>/dev/null | grep -q '^2$'
 }
 
 persist_healthy() {
@@ -123,13 +124,13 @@ ensure_profile_nix() {
       boot_nix="$p"
       break
     fi
-  done < <(find "$PERSIST/store" -maxdepth 3 -path "*/bin/nix" -type f 2>/dev/null \
+  done < <(timeout 120 find "$PERSIST/store" -maxdepth 3 -path "*/bin/nix" -type f 2>/dev/null \
     | sort -t- -k3 -V -r)
   if [ -z "$target_nix" ]; then
     echo "FATAL: no usable nix in $PERSIST/store" >&2
     return 1
   fi
-  LD_PRELOAD=$shim "$boot_nix" profile add --profile "$PROFILE" "$target_nix" 2>&1 | tail -2
+  LD_PRELOAD=$shim timeout 300 "$boot_nix" profile add --profile "$PROFILE" "$target_nix" 2>&1 | tail -2
   # NOTE: we deliberately do NOT remove old/duplicate nix elements here.
   # `profile remove` (by path or name) after an add can delete bin/nix from
   # the new generation when elements share store paths (verified 2026-09-30).

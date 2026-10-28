@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -57,6 +58,24 @@ def load_config():
 # ---------- secrets ----------
 _bws_cache = {}
 
+# `bws` lives in ~/tools/bin, which scheduler/cron environments often do
+# not have on PATH (the 2026-10-25 backup failures: bare "bws" not found).
+# Resolve it robustly, following the PG_DUMP_BIN override convention used
+# for pg_dump below: $BWS_BIN wins, then PATH, then the known install path.
+BWS_FALLBACK = os.path.expanduser("~/tools/bin/bws")
+
+
+def bws_bin():
+    env_bin = os.environ.get("BWS_BIN")
+    if env_bin:
+        return env_bin
+    found = shutil.which("bws")
+    if found:
+        return found
+    if os.path.isfile(BWS_FALLBACK) and os.access(BWS_FALLBACK, os.X_OK):
+        return BWS_FALLBACK
+    return "bws"  # let subprocess raise a clear FileNotFoundError
+
 
 def bws_secret(name):
     if name in _bws_cache:
@@ -64,11 +83,11 @@ def bws_secret(name):
     last_err = None
     for attempt in range(4):
         try:
-            out = subprocess.run(["bws", "secret", "list", "-o", "json"],
+            out = subprocess.run([bws_bin(), "secret", "list", "-o", "json"],
                                  capture_output=True, text=True, check=True).stdout
             sid = next(s["id"] for s in json.loads(out) if s["key"] == name)
             time.sleep(1.0)  # bws rate-limits rapid calls (429s seen live)
-            out = subprocess.run(["bws", "secret", "get", sid, "-o", "json"],
+            out = subprocess.run([bws_bin(), "secret", "get", sid, "-o", "json"],
                                  capture_output=True, text=True, check=True).stdout
             val = json.loads(out)["value"]
             _bws_cache[name] = val

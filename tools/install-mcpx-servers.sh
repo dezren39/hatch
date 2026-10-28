@@ -4,6 +4,10 @@
 # ~/git), so a sandbox recycle only needs node (base image) + this script.
 # Versions pinned 2026-09-30; codebase-memory + gopls pins added 2026-10-25.
 # NPM_PREFIX / LOCAL_BIN / GO may be overridden (scratch-prefix testing).
+# The npm/go installs below are network-heavy; beyond the curl/gh/git
+# bounds added inline, they rely on init.sh running this script as a
+# deferred step under a 900s run_step budget — a network stall fails
+# the step instead of hanging the boot sequence (hardening 2026-10-25).
 set -euo pipefail
 
 NPM_PREFIX="${NPM_PREFIX:-$HOME/.local/npm-global}"
@@ -52,7 +56,7 @@ fi
 # --- fff-mcp (dmtrKovalenko/fff nightly; not in nixpkgs, not on npm) ---
 if [ ! -x "$BIN/fff-mcp" ]; then
   tmp=$(mktemp -d)
-  gh release download 0.11.1-nightly.89c1927 --repo dmtrKovalenko/fff \
+  timeout 300 gh release download 0.11.1-nightly.89c1927 --repo dmtrKovalenko/fff \
     --pattern 'fff-mcp-x86_64-unknown-linux-gnu*' --dir "$tmp"
   (cd "$tmp" && sha256sum -c fff-mcp-x86_64-unknown-linux-gnu.sha256)
   install -m 755 "$tmp/fff-mcp-x86_64-unknown-linux-gnu" "$BIN/fff-mcp"
@@ -62,7 +66,7 @@ fi
 # --- codedb (justrach/codedb) ---
 if [ ! -x "$BIN/codedb" ]; then
   tmp=$(mktemp -d)
-  gh release download v0.2.5860 --repo justrach/codedb \
+  timeout 300 gh release download v0.2.5860 --repo justrach/codedb \
     --pattern 'codedb-linux-x86_64' --dir "$tmp"
   install -m 755 "$tmp/codedb-linux-x86_64" "$BIN/codedb"
   rm -rf "$tmp"
@@ -70,17 +74,17 @@ fi
 
 # --- Chrome headless shell (chrome-devtools-mcp has no bundled browser) ---
 if [ ! -x "$CHROME_DIR/chrome-headless-shell-linux64/chrome-headless-shell" ]; then
-  url=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
+  url=$(curl -s --max-time 30 https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
     | python3 -c "import json,sys; d=json.load(sys.stdin); print([x['url'] for x in d['channels']['Stable']['downloads']['chrome-headless-shell'] if x['platform']=='linux64'][0])")
   tmp=$(mktemp -d)
-  curl -sL -o "$tmp/chrome.zip" "$url"
+  curl -sL --max-time 600 -o "$tmp/chrome.zip" "$url"
   unzip -q -o "$tmp/chrome.zip" -d "$CHROME_DIR"
   rm -rf "$tmp"
 fi
 
 # --- fff-nix index target: persistent clone of Drew's nix config ---
 if [ ! -d "$HOME/git/nix/.git" ]; then
-  git clone --quiet https://github.com/dezren39/nix.git "$HOME/git/nix"
+  timeout 300 git clone --quiet https://github.com/dezren39/nix.git "$HOME/git/nix"
 fi
 
 echo "mcpx servers installed (codebase-memory-mcp $CBM_VER, gopls $GOPLS_VER). Restart the daemon: systemctl restart mcpx"
