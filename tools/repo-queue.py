@@ -520,6 +520,53 @@ def cmd_enqueue(args):
     return 0
 
 
+def _execution_arg(args):
+    raw = getattr(args, "execution", None)
+    if raw is None:
+        return None
+    try:
+        val = json.loads(raw)
+    except ValueError as exc:
+        die(2, f"--execution is not valid JSON: {exc}")
+    if not isinstance(val, dict):
+        die(2, "--execution must be a JSON object")
+    lane = val.get("lane")
+    if lane is not None and lane not in ("opencode", "direct"):
+        die(2, "--execution.lane must be 'opencode' or 'direct'")
+    return val
+
+
+def _record_execution(args, key):
+    """Record the executed lane into the lane ledger (migration 0010).
+
+    Called AFTER a terminal/park verb has succeeded, only when the caller
+    passed --execution. Returns the ledger row, or None when no
+    --execution was given. A missing ledger row raises in the RPC, which
+    surfaces here as an HTTP error — loud by design (an unrecorded lane
+    outcome is a protocol defect), and it cannot undo the terminal verb.
+    """
+    ex = _execution_arg(args)
+    if ex is None:
+        return None
+    return rpc("record_repo_task_lane_execution", {
+        "p_task_id": args.task_id,
+        "p_worker": args.worker,
+        "p_executed_lane": ex.get("lane"),
+        "p_fallback_reason": ex.get("fallback_reason"),
+        "p_session_id": ex.get("session_id"),
+    }, key)
+
+
+def cmd_lane(args):
+    key = get_service_key()
+    result = rpc("assign_repo_task_lane", {
+        "p_task_id": args.task_id,
+        "p_worker": args.worker,
+        "p_exclusion_reason": getattr(args, "exclusion_reason", None),
+    }, key)
+    return _require_row(result, "assign_repo_task_lane")
+
+
 def cmd_claim(args):
     key = get_service_key()
     result = rpc("claim_repo_task", {
@@ -596,6 +643,12 @@ def cmd_park(args):
         "p_delay_seconds": args.delay_seconds,
         "p_progress": _progress_arg(args) or {},
     }, key)
+    if result is None:
+        return _require_row(result, "park_task")
+    ledger = _record_execution(args, key)
+    if ledger is not None:
+        print_json({"task": result, "lane_ledger": ledger})
+        return 0
     return _require_row(result, "park_task")
 
 
@@ -629,6 +682,12 @@ def cmd_fail(args):
         "p_error": args.error,
         "p_reason_class": args.reason_class,
     }, key)
+    if result is None:
+        return _require_row(result, "fail_repo_task")
+    ledger = _record_execution(args, key)
+    if ledger is not None:
+        print_json({"task": result, "lane_ledger": ledger})
+        return 0
     return _require_row(result, "fail_repo_task")
 
 
@@ -648,6 +707,16 @@ def cmd_complete(args):
             die(2, f"--result is not valid JSON: {exc}")
         if not isinstance(result_obj, dict):
             die(2, "--result must be a JSON object")
+    ex = _execution_arg(args)
+    if ex is not None and "execution" not in result_obj:
+        block = {"lane": ex.get("lane"),
+                 "session_id": ex.get("session_id"),
+                 "fallback": ex.get("fallback_reason") is not None}
+        if ex.get("fallback_reason") is not None:
+            block["fallback_reason"] = ex["fallback_reason"]
+        if ex.get("assigned") is not None:
+            block["assigned"] = ex["assigned"]
+        result_obj["execution"] = block
     key = get_service_key()
     # complete_task is the EXISTING global function (design v1.1: untouched).
     result = rpc("complete_task", {
@@ -655,6 +724,12 @@ def cmd_complete(args):
         "p_worker": args.worker,
         "p_result": result_obj,
     }, key)
+    if result is None:
+        return _require_row(result, "complete_task")
+    ledger = _record_execution(args, key)
+    if ledger is not None:
+        print_json({"task": result, "lane_ledger": ledger})
+        return 0
     return _require_row(result, "complete_task")
 
 
@@ -790,6 +865,16 @@ def build_parser():
     sp.add_argument("--lease-seconds", type=int, default=2700)
     sp.set_defaults(func=cmd_claim)
 
+    sp = sub.add_parser("lane", help="assign the execution lane for a "
+                        "claimed task (assign_repo_task_lane, #1654)")
+    sp.add_argument("task_id", type=int)
+    sp.add_argument("--worker", default=DEFAULT_WORKER)
+    sp.add_argument("--exclusion-reason", default=None,
+                    help="packet cannot run as a session: assign direct "
+                         "and record this exclusion (counts toward "
+                         "neither lane)")
+    sp.set_defaults(func=cmd_lane)
+
     sp = sub.add_parser("heartbeat", help="extend a claim's lease")
     sp.add_argument("task_id", type=int)
     sp.add_argument("--worker", default=DEFAULT_WORKER)
@@ -813,6 +898,9 @@ def build_parser():
     sp.add_argument("--delay-seconds", type=int, default=1200)
     sp.add_argument("--progress")
     sp.add_argument("--progress-file")
+    sp.add_argument("--execution",
+                    help="JSON execution block for the lane ledger "
+                         "(e.g. session_id bookkeeping on park)")
     sp.set_defaults(func=cmd_park)
 
     sp = sub.add_parser("block", help="block a claimed task on a named blocker")
@@ -836,6 +924,9 @@ def build_parser():
     sp.add_argument("--error", required=True)
     sp.add_argument("--reason-class", default="transient",
                     choices=["transient", "deterministic", "blocked"])
+    sp.add_argument("--execution",
+                    help="JSON execution block {lane, session_id, "
+                         "fallback_reason} recorded in the lane ledger")
     sp.set_defaults(func=cmd_fail)
 
     sp = sub.add_parser("complete",
@@ -845,6 +936,11 @@ def build_parser():
     sp.add_argument("--worker", default=DEFAULT_WORKER)
     sp.add_argument("--result")
     sp.add_argument("--result-file")
+    sp.add_argument("--execution",
+                    help="JSON execution block {lane, session_id, "
+                         "fallback_reason, assigned}: merged into the "
+                         "result as result.execution and recorded in "
+                         "the lane ledger")
     sp.set_defaults(func=cmd_complete)
 
     sp = sub.add_parser("health", help="print the repo_queue_health view")
