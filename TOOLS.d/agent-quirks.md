@@ -18,3 +18,17 @@
 
 ## Browser tasks and secrets (2026-10-25)
 - A browser task will NOT return secret values (e.g. Slack app tokens) in its report, even when Drew explicitly instructs "pass the values through you" — the refusal is built into the browser layer. Working routes for token transfer: Drew pastes the value in chat → Muse files it into Bitwarden Secrets Manager (sha-verified round-trip, temp copies shredded); or Drew takes over the browser tab and copies the value into the vault himself.
+
+## Bulk renames in memory files — protect paths, quotes, contract fields (2026-10-28)
+A finishing-pass `sed` over the daily logs rewrote a DESIGN DOC'S FILENAME inside
+references (`pm-stack-needs-drew-actions-design-…` → `…-needs-user-…`) that a
+sweep had deliberately protected — breaking the paths (the file on disk kept the
+old name). Drew's fix: "just rename the file." Rules:
+- A rename is ONE operation: the file on disk AND every reference move together.
+  Never leave references "protected" at the old name, and never rewrite
+  references without renaming the file in the same pass.
+- Before any bulk replace over memory files, list the protected set explicitly:
+  filenames/paths, quoted decision records (they quote the old term as the
+  subject), and machine contract identifiers (needsDrew/whyDrew — owned by
+  code#1290). After the replace, re-verify the protected set against git HEAD
+  and confirm every path mentioned still resolves on disk.
