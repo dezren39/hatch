@@ -1,0 +1,24 @@
+# /etc/systemd/system/claude-code-proxy.service — claude-code-proxy bridge
+# (OpenAI-compatible HTTP API over resident Claude Code CLI stream-json
+# sessions).
+# WRITTEN BY ~/tools/install-claude-code-proxy-service.sh EVERY BOOT (/etc is ephemeral).
+# Canonical source: ~/tools/claude-code-proxy.service (this file).
+[Unit]
+Description=claude-code-proxy (OpenAI-compatible bridge to Claude Code CLI, port 18749)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# We run as root but the claude CLI keeps its login under $HOME —
+# point it at the persistent home, not /root.
+Environment=HOME=/home/hatch
+Environment=TMPDIR=/home/hatch/tmp
+Environment=GOTMPDIR=/home/hatch/tmp
+ExecStart=/home/hatch/tools/claude-code-proxy-start.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
