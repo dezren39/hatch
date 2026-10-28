@@ -165,7 +165,10 @@ run_step "nix-profile-sync" 120 bash /home/hatch/tools/nix-profile-sync.sh
 # sandbox (units left installed; manual start still works). Do not re-enable.
 # run_step "mcpx-service" 180 bash /home/hatch/tools/install-mcpx-service.sh
 # run_step "opencode-service" 300 bash /home/hatch/tools/install-opencode-service.sh
-run_step "board-agent-service" 180 bash /home/hatch/tools/install-board-agent-service.sh
+# DISABLED by Drew 2026-10-28: board-agent autostart off on the sandbox
+# (General Board unused — no real posts since bring-up 2026-10-23; cleanup
+# decision pending). Unit left installed; manual start still works.
+# run_step "board-agent-service" 180 bash /home/hatch/tools/install-board-agent-service.sh
 # DISABLED by Drew 2026-10-25 (20:52 follow-up): muse-proxy autostart off
 # (also removed from proxy-supervisor config). Do not re-enable.
 # run_step "muse-proxy-service" 180 bash /home/hatch/tools/install-muse-proxy-service.sh
