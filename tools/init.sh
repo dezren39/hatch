@@ -280,6 +280,19 @@ if [ -x "$AC_DIR/install-autocommit-units.sh" ]; then
   fi
 fi
 
+# --- Sandbox state backup: reinstall systemd units if missing ---
+# Same pattern as above; the units + installer live in hatch-personal
+# (scripts/sandbox-state-backup). Daily restic backup of ~/.config to
+# R2 (diff-only chunks); config is never committed to git (Drew,
+# 2026-10-28).
+SB_DIR=/home/hatch/hatch-personal/scripts/sandbox-state-backup
+if [ -x "$SB_DIR/install-backup-units.sh" ]; then
+  if ! systemctl is-active --quiet sandbox-state-backup.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-state-backup timer" >> "$LOG"
+    timeout 120 "$SB_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
