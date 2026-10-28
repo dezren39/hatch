@@ -10,3 +10,8 @@
 
 ## plaza git-env object dir (found 2026-10-28)
 - Laptop fleet worktrees: `source /home/user/.local/share/plaza-tools/git-env.sh` sets GIT_OBJECT_DIRECTORY=/home/user/code/.git/plaza-objects. If that dir does not exist, EVERY git command in the worktree dies with `fatal: not a git repository: (null)` and long jobs hang silently. Fix: `mkdir -p /home/user/code/.git/plaza-objects`. It was missing on 2026-10-28 (cost ~35 min on a hung patch job); created it and git worked immediately.
+
+## plaza workaround RETIRED (2026-10-28, Drew order)
+- Verified first: ~/git/code/.git has ZERO non-user-owned files, dir perms 755, test writes into objects/ and objects/pack/ succeed without sudo — the root-owned problem the workaround existed for is already gone, so NO sudo was needed. All 26 plaza-objects files already exist in the main store (incl. both promisor packs); today's commits resolve with the plaza env unset.
+- Change: git-env.sh rewritten to a settings-free retirement note (file kept because repo AGENTS.md tells sessions to source it); plaza-objects renamed to ~/code/.git/plaza-objects.retired-2026-10-28 (deletable anytime; safe to restore by renaming back + restoring the two export lines).
+- Warning stands: if a tool restores the old export lines while the dir is absent, git dies with `fatal: not a git repository: (null)` — recreate the empty dir as a stopgap.
