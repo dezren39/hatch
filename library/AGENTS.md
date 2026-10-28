@@ -34,3 +34,5 @@ Light suggestions for the main Muse agent; **rules marked STRICT are binding on 
 - Everything durable lives under `/home/hatch` (btrfs) — the sandbox overlay is wiped on recycle. Install scripts and `~/tools/init.sh` are the restore path; keep them current when you add a tool.
 - Long-lived work (longer than a single PR) gets registered as a submodule under `repos/` in `dezren39/hatch` (see `submodules.md`); short work does not.
 - Private research artifacts and tools are never publicly released without Drew's explicit approval.
+
+- **GITHUB VIA THE gh CLI ONLY — THE GITHUB CONNECTOR IS BANNED (Drew, 2026-10-28: "never use the connector ever for anything"):** never use the GitHub connector (`/opt/hatch/bin/github`, call-tool / call-read-tool) for anything, reads or writes. All GitHub work goes through the `gh` CLI (`gh issue`, `gh pr`, `gh api` — it reaches the same REST/GraphQL endpoints, sub-issues and Projects included). Every connector write call demands a fresh approval card and flooded Drew with them (2026-10-28); `gh` approvals can cover a whole scheduled task.
