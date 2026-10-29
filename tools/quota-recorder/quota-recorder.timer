@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the quota recorder every minute
+
+[Timer]
+OnCalendar=minutely
+Persistent=true
+RandomizedDelaySec=20
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Quota recorder — 1-minute Muse subscription quota snapshots, file-first with Supabase landing
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/home/hatch
+ExecStart=/usr/bin/python3 /home/hatch/tools/quota-recorder.py
