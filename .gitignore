@@ -205,3 +205,10 @@ tools/runtime-db-export/__pycache__/
 tools/runtime-db-export/progress/*.log
 tools/runtime-db-export/progress/*.json
 tools/runtime-db-export/progress/run*/
+/fod-*.md
+tools/**/*.bak
+tools/cf/package.json
+tools/cf/package-lock.json
+tools/wrangler/package.json
+tools/wrangler/package-lock.json
+tools/playwright-test/
