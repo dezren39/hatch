@@ -177,9 +177,22 @@ def pull_channel(client, conn, channel, dry_run=False, overlap_seconds=0,
     oldest = wm
     if overlap_seconds:
         oldest = str(max(0.0, float(wm) - overlap_seconds))
-    history = _paged(client, "conversations.history", "messages",
-                     channel=channel, oldest=oldest, inclusive=False,
-                     limit=200)
+    # Slack's edge intermittently rejects known-good history calls with
+    # invalid_arguments (verified 2026-10-29: two job runs failed while
+    # the identical params succeeded on manual re-issue, three times).
+    # One retry absorbs the transient; a second failure is real and
+    # propagates. Safe because pulls are idempotent (watermark + seen-set).
+    try:
+        history = _paged(client, "conversations.history", "messages",
+                         channel=channel, oldest=oldest, inclusive=False,
+                         limit=200)
+    except SlackAPIError as e:
+        if "invalid_arguments" not in str(e):
+            raise
+        time.sleep(5)
+        history = _paged(client, "conversations.history", "messages",
+                         channel=channel, oldest=oldest, inclusive=False,
+                         limit=200)
     fresh, max_ts, max_ts_str = [], float(wm), wm
     for msg in sorted(history, key=lambda m: float(m.get("ts", 0))):
         ts = msg.get("ts")
