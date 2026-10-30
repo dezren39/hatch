@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""Run SQL against Drew's Supabase project (muse-dev) via the Management API.
+"""Run SQL against Drew's primary Supabase project via the Management API.
 
 Usage: supabase-exec.py <sql-file> [project-ref]
+
+The project ref defaults to the Bitwarden secret `supabase.project-ref`
+(the canonical pointer — muse-dev2 since the 2026-10-30 cutover), so a
+future project move is a Bitwarden change, not a code change. Pass the
+ref explicitly to target another project (its scoped token must then be
+used too — the canonical token is scoped to the canonical project).
 
 Auth: reads the Bitwarden Secrets Manager access token from
 ~/.config/bitwarden/access-token, fetches `supabase.access-token-muse-cli`
@@ -14,10 +20,10 @@ import subprocess
 import sys
 import urllib.request
 
-REF_DEFAULT = "nltgxorqwxhgfzseiirt"
 BWS = os.path.expanduser("~/tools/bin/bws")
 TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
 SECRET_KEY = "supabase.access-token-muse-cli"
+REF_KEY = "supabase.project-ref"
 
 
 def bws_env():
@@ -65,10 +71,10 @@ def main():
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     sql_file = sys.argv[1]
-    ref = sys.argv[2] if len(sys.argv) > 2 else REF_DEFAULT
     with open(sql_file) as f:
         sql = f.read()
     env = bws_env()
+    ref = sys.argv[2] if len(sys.argv) > 2 else get_secret(env, REF_KEY)
     token = get_secret(env, SECRET_KEY)
     status, text = run_sql(token, ref, sql)
     print(f"HTTP {status}")
