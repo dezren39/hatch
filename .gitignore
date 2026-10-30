@@ -212,3 +212,6 @@ tools/cf/package-lock.json
 tools/wrangler/package.json
 tools/wrangler/package-lock.json
 tools/playwright-test/
+
+# review 2026-10-30: root scratch Go test snippet (mcpx flag-enumeration probe dump, not hatch source)
+/dummy
