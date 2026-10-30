@@ -24,7 +24,7 @@ Packet files are JSON with an envelope plus the repo-task/v1 payload:
     }
 
 Environment overrides:
-    REPO_QUEUE_SUPABASE_URL   default https://nltgxorqwxhgfzseiirt.supabase.co
+    REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.project-url
     REPO_QUEUE_DEFAULT_QUEUE  default repo-health-code-shadow (Phase 0:
                               the shadow queue; live cutover will pass
                               --queue repo-health-code-pilot explicitly)
@@ -47,7 +47,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-PROJECT_URL = "https://nltgxorqwxhgfzseiirt.supabase.co"
+PROJECT_URL = "https://keihfchslgjetkmnmzra.supabase.co"  # fallback only; canonical value is Bitwarden `supabase.project-url`
 DEFAULT_QUEUE = "repo-health-code-shadow"
 DEFAULT_WORKER = "repo-worker-code"
 PILOT_REPO = "developing-today/code"
@@ -127,8 +127,38 @@ def get_service_key():
         die(3, f"credential fetch failed: {exc}")
 
 
+def get_project_url():
+    """Canonical project URL from Bitwarden (`supabase.project-url`) so a
+    project move is a Bitwarden change, not a code change. Falls back to
+    PROJECT_URL if the lookup fails."""
+    env = dict(os.environ)
+    if "BWS_ACCESS_TOKEN" not in env:
+        try:
+            with open(BWS_TOKEN_FILE) as f:
+                env["BWS_ACCESS_TOKEN"] = f.read().strip()
+        except OSError:
+            return PROJECT_URL
+    bws = BWS if os.path.exists(BWS) else "bws"
+    try:
+        out = subprocess.run([bws, "secret", "list", "-o", "json"],
+                             capture_output=True, text=True, env=env,
+                             timeout=60)
+        sid = next((s["id"] for s in json.loads(out.stdout)
+                    if s.get("key") == "supabase.project-url"), None)
+        if sid is None:
+            return PROJECT_URL
+        got = subprocess.run([bws, "secret", "get", sid, "-o", "json"],
+                             capture_output=True, text=True, env=env,
+                             timeout=60)
+        return json.loads(got.stdout)["value"]
+    except (subprocess.SubprocessError, ValueError, KeyError):
+        return PROJECT_URL
+
+
 def base_url():
-    return os.environ.get("REPO_QUEUE_SUPABASE_URL", PROJECT_URL).rstrip("/")
+    if "REPO_QUEUE_SUPABASE_URL" in os.environ:
+        return os.environ["REPO_QUEUE_SUPABASE_URL"].rstrip("/")
+    return get_project_url().rstrip("/")
 
 
 def http(method, path, key, body=None, extra_headers=(), want_headers=False):
