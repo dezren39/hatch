@@ -215,3 +215,13 @@ tools/playwright-test/
 
 # review 2026-10-30: root scratch Go test snippet (mcpx flag-enumeration probe dump, not hatch source)
 /dummy
+
+# review 2026-10-31: secret-bearing device identity (never git), root scratch/probe
+# files, fleet lane scratch, and multi-GB Supabase restore dumps (backup lane, not git)
+/.secrets/
+/Str
+/x
+/probe_main.go
+/probe_test.go.bak
+/scratch-lane-d/
+workspace/supabase/restore-prep/
