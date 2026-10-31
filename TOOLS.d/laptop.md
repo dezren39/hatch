@@ -17,10 +17,17 @@
   ~/.ssh/cm-%r@%h:%p, ControlPersist=600 — 600 chosen to bridge the 10-min
   watch cadence). Verified: warm-master burst 14/14 OK (cold-start race can
   still drop a couple while several clients race to create the master).
-- PERMANENT FIX (not yet applied): `services.openssh.settings.MaxStartups =
-  "100:30:300"` in the laptop's NixOS config + switch — time the switch when
-  no interactive laptop SSH is in use (sshd restart can take in-cgroup
-  session processes; the OpenCode server on 40181 is independent of sshd).
+- PERMANENT FIX — APPLIED (verified live 2026-10-31): MaxStartups is raised
+  to **200:30:500**. `/etc/ssh/sshd_config` (via /etc/static, current
+  generation) carries `MaxStartups 200:30:500`, and the RUNNING listener's
+  own proctitle reads `[listener] 0 of 200-500 startups` — the raise is
+  effective in the daemon, not just on disk. Do NOT propose re-applying it
+  or "raising to 100:30:300" (that would be a cut). Consequence: the SSH
+  drops recurring since (code #2879, 2026-10-30/31) happen WITH the 200 cap
+  live, so MaxStartups is no longer a sufficient explanation for them —
+  recent reports are mostly setup timeouts on the DERP path that succeed
+  on retry. #2879 needs fresh evidence (journal during a burst, cold-start
+  repro) before any new root cause is claimed.
 
 - 2026-10-25: laptop-ssh.sh eats piped stdin (its Python source arrives via heredoc) — sudo -S through the helper gets EOF ("no password was provided"). For stdin-carrying SSH (sudo -S, password feeds), build a direct ssh call with the same socat ProxyCommand (proxy creds from HTTPS_PROXY env) instead of the helper.
 
