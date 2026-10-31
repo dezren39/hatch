@@ -293,6 +293,19 @@ if [ -x "$SB_DIR/install-backup-units.sh" ]; then
   fi
 fi
 
+# --- Sandbox home backup: reinstall systemd units if missing ---
+# Same pattern as above; units + installer live in hatch-personal
+# (scripts/sandbox-home-backup). Daily restic backup of ALL of
+# /home/hatch to R2 (diff-only chunks) — Drew's directive 2026-10-31
+# after the config-only backup's gap cost 8,261 ~/agents originals.
+SH_DIR=/home/hatch/hatch-personal/scripts/sandbox-home-backup
+if [ -x "$SH_DIR/install-backup-units.sh" ]; then
+  if ! systemctl is-active --quiet sandbox-home-backup.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-backup timer" >> "$LOG"
+    timeout 120 "$SH_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
