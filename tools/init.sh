@@ -244,16 +244,14 @@ if [ -x "$FU_DIR/install.sh" ]; then
   fi
 fi
 
-# --- Fleet-feed collector: reinstall systemd units if missing ---
-# Same pattern as above; the units + installer live in the pm-feed clone
-# (developing-today/code#903).
-FFC_DIR=/home/hatch/git/pm-feed/pm-stack/aggregator
-if [ -x "$FFC_DIR/scripts/install-collector-units.sh" ]; then
-  if ! systemctl is-active --quiet fleet-feed-collector.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet-feed collector timer" >> "$LOG"
-    timeout 120 "$FFC_DIR/scripts/install-collector-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
-  fi
-fi
+# --- Fleet-feed collector: RETIRED on the sandbox (2026-11-01, code#3362) ---
+# The collector moved to the laptop on 2026-10-31 (code#3363/#3368, pm-stack
+# NixOS module). The sandbox timer kept running from the stale pm-feed clone
+# and pushed an AA-absent feed (Supabase HTTP 403: its unit predated the
+# muse-dev2 ref pin) over the laptop collector's feed every ~5 min. The
+# sandbox units + installer are deleted in the repo; do NOT restore them
+# here. If fleet-feed-collector units are ever found installed on this
+# host again, that is the #3362 regression returning — remove them.
 
 # --- Resource sampler: reinstall systemd unit if missing ---
 # Same pattern as above; the unit + installer live in hatch-personal
