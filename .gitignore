@@ -225,3 +225,16 @@ tools/playwright-test/
 /probe_test.go.bak
 /scratch-lane-d/
 workspace/supabase/restore-prep/
+
+# review 2026-11-01: root scratch/err dumps, staging test copies, Jules/Snap-gap
+# scratch caches, a hatch-personal worktree checkout, and the personal-data
+# home-domain migration (Lane 2, private only — never public)
+/=
+/expand-tests-staging.ts
+/lsremote-r27-*.err
+/prlist-*-r27.err
+/jules_work/
+/snap_gap_work/
+/tmp4786/
+/worktrees/
+workspace/supabase/muse-dev/migrations/0018_home_domain.sql
