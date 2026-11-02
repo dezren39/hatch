@@ -82,68 +82,10 @@ def gh_api(path):
     raise RuntimeError(f"gh api {path}: {last_err}")
 
 
-def normalize_remote(url):
-    url = (url or "").strip()
-    for prefix in ("https://github.com/", "http://github.com/",
-                   "git@github.com:", "ssh://git@github.com/"):
-        if url.startswith(prefix):
-            url = url[len(prefix):]
-            break
-    if url.endswith(".git"):
-        url = url[:-4]
-    return url.rstrip("/").lower()
-
-
-def find_clone(repo):
-    """Return (path, remotes dict) for the first preferred clone whose
-    origin remote matches the repo slug, else (None, {})."""
-    for rel in REPOS[repo]:
-        path = os.path.join(HOME, rel)
-        if not os.path.isdir(path):
-            continue
-        try:
-            out = run(["git", "-C", path, "remote"], timeout=30)
-            if out.returncode != 0:
-                continue
-            remotes = {}
-            for name in out.stdout.split():
-                u = run(["git", "-C", path, "remote", "get-url", name],
-                        timeout=30)
-                if u.returncode == 0:
-                    remotes[name] = u.stdout.strip()
-            if normalize_remote(remotes.get("origin", "")) == repo.lower():
-                return path, remotes
-        except Exception:
-            continue
-    return None, {}
-
-
-def git_fetch(clone, remote):
-    out = run(["git", "-C", clone, "fetch", "--quiet", remote], timeout=300)
-    if out.returncode != 0:
-        raise RuntimeError(f"git fetch {remote}: {out.stderr.strip()[:300]}")
-
-
-def git_rev_parse(clone, ref):
-    out = run(["git", "-C", clone, "rev-parse", ref], timeout=30)
-    if out.returncode != 0:
-        return None
-    return out.stdout.strip()
-
-
 def fetch_repo(repo):
     """Gather one repo's snapshot. Returns (snapshot dict, notes list).
     Raises on hard failure of the gh side."""
-    notes = []
-    clone, remotes = find_clone(repo)
-    if clone is None:
-        notes.append("no local clone found; git fetch skipped")
-    else:
-        git_fetch(clone, "origin")
-        notes.append(f"git fetch origin ok ({clone})")
-        if repo == NIX_REPO and "upstream" in remotes:
-            git_fetch(clone, "upstream")
-            notes.append("git fetch upstream ok")
+    notes = ["gh-api only (no local clone fetch — Drew, 2026-11-02)"]
 
     meta = gh_api(f"repos/{repo}")
     default_branch = meta.get("default_branch")
@@ -194,11 +136,13 @@ def fetch_repo(repo):
         "ci_summary": ci_summary,
     }
 
-    if repo == NIX_REPO and clone and "upstream" in remotes:
-        sha = (git_rev_parse(clone, "upstream/nixpkgs-unstable")
-               or git_rev_parse(clone, "upstream/HEAD"))
-        if sha:
-            snapshot["_upstream_sha"] = sha
+    if repo == NIX_REPO:
+        try:
+            upstream = gh_api("repos/NixOS/nixpkgs/commits/nixpkgs-unstable")
+            if upstream.get("sha"):
+                snapshot["_upstream_sha"] = upstream["sha"]
+        except Exception as exc:
+            notes.append(f"upstream sha read failed: {str(exc)[:120]}")
 
     return snapshot, notes
 
