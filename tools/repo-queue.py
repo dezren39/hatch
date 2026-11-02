@@ -597,6 +597,17 @@ def cmd_lane(args):
     return _require_row(result, "assign_repo_task_lane")
 
 
+def cmd_bind(args):
+    key = get_service_key()
+    result = rpc("bind_repo_task_lane_session", {
+        "p_task_id": args.task_id,
+        "p_worker": args.worker,
+        "p_session_id": args.session_id,
+        "p_launched_by": args.launched_by,
+    }, key)
+    return _require_row(result, "bind_repo_task_lane_session")
+
+
 def cmd_claim(args):
     key = get_service_key()
     claim_args = {
@@ -911,6 +922,17 @@ def build_parser():
                          "and record this exclusion (counts toward "
                          "neither lane)")
     sp.set_defaults(func=cmd_lane)
+
+    sp = sub.add_parser("bind", help="bind a launched session id to a "
+                        "lane-assigned task at launch time "
+                        "(bind_repo_task_lane_session, #3026)")
+    sp.add_argument("task_id", type=int)
+    sp.add_argument("--worker", default=DEFAULT_WORKER)
+    sp.add_argument("--session-id", required=True,
+                    help="the OpenCode session id just created for this task")
+    sp.add_argument("--launched-by", default="opencode-claimant",
+                    help="who launched the session (recorded in progress)")
+    sp.set_defaults(func=cmd_bind)
 
     sp = sub.add_parser("heartbeat", help="extend a claim's lease")
     sp.add_argument("task_id", type=int)
