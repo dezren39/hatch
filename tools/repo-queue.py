@@ -737,6 +737,32 @@ def cmd_fail(args):
     return _require_row(result, "fail_repo_task")
 
 
+TELEMETRY_FIELDS = ("pool", "model", "effort", "cost_usd")
+
+
+def _check_telemetry_fields(obj, source):
+    """Validate the optional fleet-telemetry fields (#1582) wherever they
+    appear in a completion result: pool/model/effort are non-empty strings
+    or null; cost_usd is a non-negative number or null. Effort is recorded
+    only from resolved session messages, never inferred from route names
+    (meta-reviewer guideline 2026-10-27) — callers pass null when their
+    session does not expose a resolved value."""
+    for field in TELEMETRY_FIELDS:
+        if field not in obj:
+            continue
+        value = obj[field]
+        if value is None:
+            continue
+        if field == "cost_usd":
+            if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                    or value < 0:
+                die(2, f"{source}: telemetry field 'cost_usd' must be a "
+                       "non-negative number or null")
+        elif not isinstance(value, str) or not value:
+            die(2, f"{source}: telemetry field {field!r} must be a "
+                   "non-empty string or null")
+
+
 def cmd_complete(args):
     result_raw = args.result
     if args.result_file:
@@ -753,6 +779,26 @@ def cmd_complete(args):
             die(2, f"--result is not valid JSON: {exc}")
         if not isinstance(result_obj, dict):
             die(2, "--result must be a JSON object")
+    # Fleet telemetry (#1582): optional, additive pool/model/effort/cost_usd
+    # on the completion result. They may be carried at the top level of
+    # --result and/or supplied via --telemetry (which fills any field the
+    # result itself does not carry); both sources are type-checked.
+    _check_telemetry_fields(result_obj, "--result")
+    if getattr(args, "telemetry", None):
+        try:
+            telemetry_obj = json.loads(args.telemetry)
+        except ValueError as exc:
+            die(2, f"--telemetry is not valid JSON: {exc}")
+        if not isinstance(telemetry_obj, dict):
+            die(2, "--telemetry must be a JSON object")
+        unknown = sorted(set(telemetry_obj) - set(TELEMETRY_FIELDS))
+        if unknown:
+            die(2, f"--telemetry: unknown field(s) {unknown}; allowed: "
+                   f"{list(TELEMETRY_FIELDS)}")
+        _check_telemetry_fields(telemetry_obj, "--telemetry")
+        for field in TELEMETRY_FIELDS:
+            if field in telemetry_obj and field not in result_obj:
+                result_obj[field] = telemetry_obj[field]
     ex = _execution_arg(args)
     if ex is not None and "execution" not in result_obj:
         block = {"lane": ex.get("lane"),
@@ -997,6 +1043,13 @@ def build_parser():
     sp.add_argument("--worker", default=DEFAULT_WORKER)
     sp.add_argument("--result")
     sp.add_argument("--result-file")
+    sp.add_argument("--telemetry",
+                    help="JSON fleet-telemetry block {pool, model, effort, "
+                         "cost_usd} (#1582): merged into the result's "
+                         "top-level telemetry fields (fields already in "
+                         "--result win); every field is optional and may "
+                         "be null when the completing session's route does "
+                         "not expose it")
     sp.add_argument("--execution",
                     help="JSON execution block {lane, session_id, "
                          "fallback_reason, assigned}: merged into the "
