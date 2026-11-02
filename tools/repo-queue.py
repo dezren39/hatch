@@ -599,11 +599,14 @@ def cmd_lane(args):
 
 def cmd_claim(args):
     key = get_service_key()
-    result = rpc("claim_repo_task", {
+    claim_args = {
         "p_worker": args.worker,
         "p_queue": args.queue or default_queue(),
         "p_lease_seconds": args.lease_seconds,
-    }, key)
+    }
+    if getattr(args, "lane", None):
+        claim_args["p_lane_id"] = args.lane
+    result = rpc("claim_repo_task", claim_args, key)
     if result is None:
         eprint("repo-queue: no claimable task")
         print_json({"task": None})
@@ -893,6 +896,10 @@ def build_parser():
     sp.add_argument("--queue", default=None)
     sp.add_argument("--worker", default=DEFAULT_WORKER)
     sp.add_argument("--lease-seconds", type=int, default=2700)
+    sp.add_argument("--lane", default=None,
+                    help="lane id for completion attribution "
+                         "(agent.lanes); the claim itself still runs "
+                         "as --worker")
     sp.set_defaults(func=cmd_claim)
 
     sp = sub.add_parser("lane", help="assign the execution lane for a "
