@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """fleet-fetch.py — deterministic repo snapshot fetcher (Phase B part 1).
 
-For each fleet repo: `git fetch` the canonical local clone (FETCH ONLY —
-never pull/checkout/reset), pull current state via `gh api`, and upsert a
-row into agent.repo_snapshots in Supabase muse-dev. One agent.events row
+For each fleet repo: pull current state via `gh api` and upsert a row
+into agent.repo_snapshots in Supabase muse-dev. One agent.events row
 per run (worker_id 'fleet-fetcher', kind 'snapshot_refresh') plus
 watermarks. Zero agent tokens: pure script, run by fleet-fetch.timer.
+
+NO LOCAL CLONES (Drew, 2026-11-02): the sandbox holds no repo copies.
+The former clone-warming `git fetch` step was removed; the snapshot
+payload always came from `gh api`, and the nix upstream watermark now
+reads the nixpkgs-unstable head from `gh api` too.
 
 Writes go through ~/tools/supabase-exec.py (temp .sql files). Failure of
 one repo never fails the others; exit is non-zero only if ALL repos fail.
@@ -25,14 +29,13 @@ SUPABASE_EXEC = os.path.join(HOME, "tools", "supabase-exec.py")
 LOG_FILE = os.path.join(HOME, "logs", "fleet-fetch.log")
 SQL_TMPDIR = os.path.join(HOME, "tmp")  # /tmp is a small tmpfs on this box
 
-# repo slug -> preferred clone paths (relative to $HOME), checked in order.
-REPOS = {
-    "developing-today/code": ["git/fleet/code", "git/devtoday-code"],
-    "developing-today/opencode": ["git/fleet/opencode", "git/devtoday-opencode"],
-    "developing-today/openchamber": ["git/fleet/openchamber",
-                                     "git/devtoday-openchamber"],
-    "dezren39/nix": ["git/fleet/nix", "git/devtoday-nix", "git/nix"],
-}
+# Fleet repo slugs. Snapshots are gh-api only — no local clones.
+REPOS = [
+    "developing-today/code",
+    "developing-today/opencode",
+    "developing-today/openchamber",
+    "dezren39/nix",
+]
 NIX_REPO = "dezren39/nix"
 UPSTREAM_WATERMARK_KEY = "upstream:nixpkgs-unstable"
 CAP = 100
