@@ -238,3 +238,13 @@ workspace/supabase/restore-prep/
 /tmp4786/
 /worktrees/
 workspace/supabase/muse-dev/migrations/0018_home_domain.sql
+
+# review 2026-11-02: root probe scripts, a queue-scan output dump, a PR-body
+# draft, and code-repo source spill (plaza guest host pair; real home is a
+# code worktree, kept on disk — scratch in hatch, not hatch source)
+/agy-probe.mjs
+/probe1.sh
+/queued-scan.json
+/pr5813.md
+/guest.ts
+/manifest.ts
