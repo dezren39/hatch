@@ -52,9 +52,11 @@ DEFAULT_QUEUE = "repo-health-code-shadow"
 DEFAULT_WORKER = "repo-worker-code"
 PILOT_REPO = "developing-today/code"
 FLEET_REPOS = ["developing-today/code", "developing-today/opencode",
-               "developing-today/openchamber", "dezren39/nix"]
+               "developing-today/openchamber", "dezren39/nix",
+               "developing-today/zettel", "dezren39/dezren39"]
 REPO_ALT = ("(?:developing-today/code|developing-today/opencode|"
-            "developing-today/openchamber|dezren39/nix)")
+            "developing-today/openchamber|dezren39/nix|"
+            "developing-today/zettel|dezren39/dezren39)")
 BWS = os.path.expanduser("~/tools/bin/bws")
 BWS_TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
 SECRET_NAME = "supabase.service-role-key"
