@@ -23,6 +23,13 @@ Packet files are JSON with an envelope plus the repo-task/v1 payload:
                    ~/tools/repo-task-v1.schema.json... }
     }
 
+Priority direction: lower numbers claim first. `claim` takes the
+claimable task with the lowest priority value; ties break FIFO by
+created_at (claim order is priority ASC, created_at ASC). The scale
+is PRIORITY_SCALE below (10 = most urgent, 90 = least); enqueue
+keeps the packet's value unchanged — the direction lives in this
+docstring and the claim/enqueue help, not in the numbers.
+
 Environment overrides:
     REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.project-url
     REPO_QUEUE_DEFAULT_QUEUE  default repo-health-code-shadow (Phase 0:
@@ -45,7 +52,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 PROJECT_URL = "https://keihfchslgjetkmnmzra.supabase.co"  # fallback only; canonical value is Bitwarden `supabase.project-url`
 DEFAULT_QUEUE = "repo-health-code-shadow"
@@ -63,6 +70,9 @@ SECRET_NAME = "supabase.service-role-key"
 GOAL_DIR = os.path.expanduser(
     "~/workspace/goals/keep-the-four-repos-healthy/hidden_files")
 DEFAULT_SIGNAL_PATH = os.path.join(GOAL_DIR, "repo-queue-signal.json")
+# Priority scale (values unchanged): LOWER claims first —
+# claim_repo_task orders priority ASC, then created_at ASC
+# (same-priority FIFO). 10 is the most urgent value on the scale.
 PRIORITY_SCALE = {10, 20, 30, 40, 50, 70, 90}
 KINDS = {"pr_shepherd", "triage", "small_fix", "ci_investigation"}
 PAYLOAD_WARN_BYTES = 4096    # design target: payload normally below 4 KB
@@ -90,6 +100,19 @@ def die(code, msg):
 
 def utcnow_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_ts(v):
+    """Parse an ISO 8601 timestamp from a task row; None if unusable."""
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 # --------------------------------------------------------------------------
@@ -536,6 +559,7 @@ def cmd_enqueue(args):
     rpc_name = ("enqueue_repo_task" if repo in (None, PILOT_REPO)
                 else "enqueue_repo_task_fleet")
     key = get_service_key()
+    call_started = datetime.now(timezone.utc)
     result = rpc(rpc_name, {
         "p_queue": task["queue"],
         "p_title": task["title"],
@@ -548,8 +572,109 @@ def cmd_enqueue(args):
     }, key)
     if result is None:
         die(5, f"{rpc_name} returned no row")
+    line, warnings = _enqueue_outcome(result, queue, call_started)
+    print(line)
+    for w in warnings:
+        print(f"warning: {w}")
     print_json(result)
     return 0
+
+
+TERMINAL_STATUSES = {"done", "cancelled", "failed"}
+
+
+def _enqueue_outcome(result, requested_queue, call_started):
+    """Classify an enqueue RPC row as new / dedupe hit / revived (#1289).
+
+    The RPC returns the pre-existing row on a dedupe_key hit, so the
+    row's timestamps are compared against the enqueue instant: a row
+    created at the call is new; a pre-existing row that came back
+    queued with an updated_at at/after the call was revived by
+    revive-on-enqueue (migration 0014, #1298); anything else is a
+    plain dedupe hit. Returns (line, warnings)."""
+    tid = result.get("id")
+    q = result.get("queue")
+    s = result.get("status")
+    created_raw = result.get("created_at")
+    created = _parse_ts(created_raw)
+    updated = _parse_ts(result.get("updated_at"))
+    skew = timedelta(seconds=10)
+    warnings = []
+    if created is not None and created >= call_started - skew:
+        return (f"enqueued new task {tid} (queue {q}, status {s})",
+                warnings)
+    if q != requested_queue:
+        warnings.append(f"dedupe hit is in a different queue "
+                        f"({q} != requested {requested_queue})")
+    if s == "queued" and updated is not None \
+            and updated >= call_started - skew:
+        return (f"revived: existing task {tid} (queue {q}, status {s}, "
+                f"created {created_raw})", warnings)
+    if s in TERMINAL_STATUSES:
+        warnings.append(f"dedupe hit is in a terminal state "
+                        f"(status {s})")
+    return (f"dedupe hit: existing task {tid} (queue {q}, status {s}, "
+            f"created {created_raw})", warnings)
+
+
+def cmd_list(args):
+    """List a queue's tasks in claim order (#1289): priority ASC
+    (lower claims first), then created_at ASC (FIFO within a
+    priority). Ids render as `task <id>` per the #1274 prefix rule."""
+    key = get_service_key()
+    from urllib.parse import quote
+    queue = args.queue or default_queue()
+    path = ("tasks?select=id,queue,title,priority,status,dedupe_key,"
+            "created_at,not_before"
+            f"&queue=eq.{quote(queue, safe='')}"
+            "&order=priority.asc,created_at.asc"
+            f"&limit={int(args.limit)}")
+    if args.status:
+        path += f"&status=eq.{quote(args.status, safe='')}"
+    if args.not_before:
+        path += ("&or=(not_before.is.null,not_before.lte."
+                 f"{quote(args.not_before, safe=':')})")
+    rows = http("GET", path, key) or []
+    if not rows:
+        print("(no tasks)")
+        return 0
+    now = datetime.now(timezone.utc)
+    cols = ["task", "priority", "status", "age", "dedupe_key", "title"]
+    str_rows = [[f"task {r.get('id')}",
+                 _fmt_cell(r.get("priority")),
+                 _fmt_cell(r.get("status")),
+                 _age_str(r.get("created_at"), now),
+                 _fmt_cell(r.get("dedupe_key")),
+                 _truncate(r.get("title"), 72)] for r in rows]
+    widths = [max(len(c), *(len(r[i]) for r in str_rows))
+              for i, c in enumerate(cols)]
+
+    def fmt_row(cells):
+        return "  ".join(c.ljust(widths[i]) for i, c in enumerate(cells))
+
+    print(fmt_row(cols))
+    print(fmt_row(["-" * len(c) for c in cols]))
+    for r in str_rows:
+        print(fmt_row(r))
+    return 0
+
+
+def _age_str(created_raw, now):
+    created = _parse_ts(created_raw)
+    if created is None:
+        return ""
+    secs = max(0, int((now - created).total_seconds()))
+    d, rem = divmod(secs, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
+    if d:
+        return f"{d}d {h:02d}:{m:02d}"
+    return f"{h}:{m:02d}:{s:02d}"
+
+
+def _truncate(v, n):
+    s = "" if v is None else str(v)
+    return s if len(s) <= n else s[:n - 1] + "…"
 
 
 def _execution_arg(args):
@@ -950,7 +1075,9 @@ def build_parser():
     import argparse
     p = argparse.ArgumentParser(
         prog="repo-queue.py",
-        description="Repo-health queue/worker pilot helper (repo-task/v1).",
+        description="Repo-health queue/worker pilot helper (repo-task/v1). "
+                    "Priority direction: lower priority numbers claim "
+                    "first; ties break FIFO by created_at.",
         epilog="Exit codes: 0 ok · 2 validation/usage · 3 config/credential"
                " · 4 HTTP/PostgREST · 5 no matching row.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -959,7 +1086,23 @@ def build_parser():
     sp.add_argument("packet")
     sp.set_defaults(func=cmd_validate)
 
-    sp = sub.add_parser("enqueue", help="validate + enqueue a packet")
+    sp = sub.add_parser("list", help="list tasks in claim order "
+                        "(priority ASC — lower claims first — then "
+                        "created_at ASC, FIFO within a priority)")
+    sp.add_argument("--queue", default=None)
+    sp.add_argument("--status", default=None,
+                    help="only tasks in this status (queued, claimed, "
+                         "parked, blocked, done, failed, cancelled)")
+    sp.add_argument("--limit", type=int, default=20)
+    sp.add_argument("--not-before", default=None,
+                    help="only tasks due at or before this ISO 8601 "
+                         "instant (not_before filter, claim semantics)")
+    sp.set_defaults(func=cmd_list)
+
+    sp = sub.add_parser("enqueue", help="validate + enqueue a packet "
+                        "(packet priority: lower numbers claim first, "
+                        "FIFO within a priority; output names an "
+                        "enqueued-new vs dedupe-hit vs revived outcome)")
     sp.add_argument("packet")
     sp.add_argument("--queue", default=None)
     sp.add_argument("--dry-run", action="store_true",
@@ -967,7 +1110,14 @@ def build_parser():
                          "no network call")
     sp.set_defaults(func=cmd_enqueue)
 
-    sp = sub.add_parser("claim", help="claim one task (claim_repo_task)")
+    sp = sub.add_parser("claim", help="claim one task (claim_repo_task): "
+                        "lowest priority value first, FIFO by "
+                        "created_at within a priority",
+                        description="Claim the next claimable task "
+                                    "(claim_repo_task). Priority "
+                                    "direction: lowest priority value "
+                                    "first; ties break FIFO by "
+                                    "created_at.")
     sp.add_argument("--queue", default=None)
     sp.add_argument("--worker", default=DEFAULT_WORKER)
     sp.add_argument("--lease-seconds", type=int, default=2700)
