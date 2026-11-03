@@ -396,7 +396,7 @@ def validate_packet(packet):
     ma = payload.get("max_attempts")
     kind = payload.get("kind")
     if isinstance(ma, int):
-        want = 3 if kind in ("triage", "ci_investigation") else 2
+        want = 6 if kind in ("triage", "ci_investigation") else 4
         if ma != want:
             warnings.append(f"payload.max_attempts: design default for "
                             f"{kind} is {want}, packet says {ma}")
@@ -499,8 +499,8 @@ def task_from_packet(packet, queue):
         "dedupe_key": packet["dedupe_key"],
         "priority": packet["priority"],
         "not_before": packet.get("not_before"),
-        "max_attempts": packet.get("max_attempts",
-                                   payload.get("max_attempts")),
+        "max_attempts": packet.get("max_attempts")
+                        or payload.get("max_attempts") or 4,
     }
 
 
@@ -686,9 +686,15 @@ def cmd_park(args):
         "p_task_id": args.task_id,
         "p_worker": args.worker,
         "p_reason": args.reason,
-        "p_delay_seconds": args.delay_seconds,
         "p_progress": _progress_arg(args) or {},
     }
+    # Exactly one of delay / absolute not_before (migration 0022): send
+    # only the one the caller gave; the RPC defaults to 1200s when
+    # neither is present and errors when both are.
+    if getattr(args, "not_before", None):
+        park_args["p_not_before"] = args.not_before
+    elif args.delay_seconds is not None:
+        park_args["p_delay_seconds"] = args.delay_seconds
     ready_raw = getattr(args, "ready_condition", None)
     if ready_raw:
         try:
@@ -1012,7 +1018,15 @@ def build_parser():
     sp.add_argument("task_id", type=int)
     sp.add_argument("--worker", default=DEFAULT_WORKER)
     sp.add_argument("--reason", required=True)
-    sp.add_argument("--delay-seconds", type=int, default=1200)
+    when = sp.add_mutually_exclusive_group()
+    when.add_argument("--delay-seconds", type=int, default=None,
+                      help="relative park delay in seconds (default: "
+                           "1200 when neither delay nor --not-before "
+                           "is given)")
+    when.add_argument("--not-before",
+                      help="absolute park-until instant, ISO 8601 "
+                           "(migration 0022), e.g. 2026-10-25T12:00:00Z; "
+                           "mutually exclusive with --delay-seconds")
     sp.add_argument("--progress")
     sp.add_argument("--progress-file")
     sp.add_argument("--ready-condition",
