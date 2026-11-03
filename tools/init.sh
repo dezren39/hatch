@@ -244,6 +244,18 @@ if [ -x "$FU_DIR/install.sh" ]; then
   fi
 fi
 
+# --- Charge-inputs fetcher: reinstall systemd units if missing ---
+# Same pattern as above; the units + installer live in hatch-personal
+# (scripts/charge-inputs-fetcher). Stages Plaid/Gmail CLI responses and
+# pushes them to the laptop charge-candidates producer (code#4641).
+CF_DIR=/home/hatch/hatch-personal/scripts/charge-inputs-fetcher
+if [ -x "$CF_DIR/install.sh" ]; then
+  if ! systemctl is-active --quiet charge-inputs-fetcher.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring charge-inputs-fetcher timer" >> "$LOG"
+    timeout 120 "$CF_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 # --- Fleet-feed collector: RETIRED on the sandbox (2026-11-01, code#3362) ---
 # The collector moved to the laptop on 2026-10-31 (code#3363/#3368, pm-stack
 # NixOS module). The sandbox timer kept running from the stale pm-feed clone

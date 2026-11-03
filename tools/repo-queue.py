@@ -682,13 +682,23 @@ def cmd_checkpoint(args):
 
 def cmd_park(args):
     key = get_service_key()
-    result = rpc("park_task", {
+    park_args = {
         "p_task_id": args.task_id,
         "p_worker": args.worker,
         "p_reason": args.reason,
         "p_delay_seconds": args.delay_seconds,
         "p_progress": _progress_arg(args) or {},
-    }, key)
+    }
+    ready_raw = getattr(args, "ready_condition", None)
+    if ready_raw:
+        try:
+            ready = json.loads(ready_raw)
+        except ValueError as exc:
+            die(2, f"--ready-condition is not valid JSON: {exc}")
+        if not isinstance(ready, dict):
+            die(2, "--ready-condition must be a JSON object")
+        park_args["p_ready_condition"] = ready
+    result = rpc("park_task", park_args, key)
     if result is None:
         return _require_row(result, "park_task")
     ledger = _record_execution(args, key)
@@ -1005,6 +1015,12 @@ def build_parser():
     sp.add_argument("--delay-seconds", type=int, default=1200)
     sp.add_argument("--progress")
     sp.add_argument("--progress-file")
+    sp.add_argument("--ready-condition",
+                    help="JSON ready_condition recorded on the park "
+                         "(migration 0021): what 'done waiting' means, "
+                         "e.g. '{\"kind\": \"ci\"}' or "
+                         "'{\"kind\": \"task_terminal\", \"task_id\": 123}'; "
+                         "defaults to a time condition at not_before")
     sp.add_argument("--execution",
                     help="JSON execution block for the lane ledger "
                          "(e.g. session_id bookkeeping on park)")
