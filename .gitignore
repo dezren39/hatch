@@ -248,3 +248,19 @@ workspace/supabase/muse-dev/migrations/0018_home_domain.sql
 /pr5813.md
 /guest.ts
 /manifest.ts
+
+# review 2026-11-03: root queue-payload/output dumps and probe scripts from
+# fleet lane work, fleet build-lock state, a local timetrap DB, and the
+# wf-surgery scratch tree (copies of other repos' workflows, kept on disk)
+/ckpt*.json
+/claim*.json
+/complete*.json
+/enq*.json
+/park*.json
+/heartbeat-verify.json
+/quota2.txt
+/probe.ts
+/probe_*.rs
+/.fleet-build-locks/
+/.timetrap.db
+/wf-surgery/
