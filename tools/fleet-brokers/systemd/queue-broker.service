@@ -1,0 +1,12 @@
+[Unit]
+Description=queue-broker — repo-health queue service (code#5362)
+After=network-online.target secrets-broker.service
+Wants=secrets-broker.service
+
+[Service]
+ExecStart=%h/fleet-brokers/bin/queue-broker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

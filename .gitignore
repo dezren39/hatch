@@ -267,3 +267,4 @@ workspace/supabase/muse-dev/migrations/0018_home_domain.sql
 tools/laptop-agent-token
 tools/queue-broker-token
 tools/secrets-broker-token
+tools/repo-queue
