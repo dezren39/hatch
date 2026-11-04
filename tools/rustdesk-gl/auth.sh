@@ -19,19 +19,19 @@
 # directly into the laptop's RustDesk.toml in RustDesk 1.5.0's exact storage
 # format ("01" + secretbox("00" + base64(SHA256(pw || config.salt))), salt
 # kept stable), service stopped during the splice, then restarted.
-# REMAINING BLOCKER is NOT the password: the host's Wayland ScreenCast /
-# PipeWire pipeline never delivers frames (client: "Connection error:
-# Timeout"; host log: portal handshake OK, AV1 encoder selected, connection
-# closed on Timeout). See README "Video leg" before burning time on it.
+# VIDEO STATE (2026-11-04, RESOLVED — code#5509 closed): frames flow and
+# sessions are stable. The blockers were a wedged xdg-desktop-portal-
+# hyprland (restarted) and the RustDesk route riding the shared SSH
+# ControlMaster (now a dedicated forward — see launch.sh/forward.sh and
+# README "Video leg"). If video ever regresses, check those two first.
 #
-# Dialog geometry on the 1600x1000 display (fresh connect): password field
-# ~(1120,768) — VERIFIED (24 dots land). The dialog RE-CENTERS with the
-# remote window, so re-measure from a fresh screenshot if the window moved;
-# the old (1070,720) point hits the "Remember password" row and submits
-# EMPTY. Submit with `xdotool key Return` (the field keeps focus after
-# paste) instead of clicking OK — immune to dialog drift. Focus MUST be set
-# with `windowfocus` (raw X focus): there is no window manager, so
-# `windowactivate` (_NET_ACTIVE_WINDOW) silently no-ops.
+# Dialog interaction (corrected 2026-11-04): DO NOT CLICK ANYTHING. The
+# fresh dialog auto-focuses the password field; the dialog also RE-CENTERS
+# whenever the remote window re-renders, so any baked coordinate is a trap
+# (two pastes were lost to clicks landing on the "Remember password" row).
+# The proven sequence is: `windowfocus` (raw X focus — there is no window
+# manager, so `windowactivate` silently no-ops) -> feed clipboard -> Ctrl+V
+# -> verify the dots in a screenshot -> `xdotool key Return`.
 set -euo pipefail
 export DISPLAY=:99
 XCLIP=/nix/store/s5dlvs8ripp19rc31n55hrrcg7ngfb8c-xclip-0.13/bin/xclip
@@ -47,8 +47,11 @@ XD="$HOME/tools/dispatcher.sh"
 WIN=$($XD xdotool search --name 'Remote Desktop - RustDesk' 2>/dev/null | head -1)
 [ -n "${WIN:-}" ] || { echo "auth: remote window not found" >&2; exit 1; }
 $XD xdotool windowfocus --sync "$WIN"
-$XD xdotool mousemove 1120 768 click 1
-sleep 1
+# NO mouse click (corrected 2026-11-04): on a fresh dialog the password
+# field is ALREADY focused (blue border + live cursor). Clicking is what
+# breaks the paste — the dialog re-centers between screenshots, the click
+# lands on the "Remember password" row, focus leaves the field, and Ctrl+V
+# goes nowhere. Focus the window only, then paste.
 printf %s "$PW" | $XCLIP -selection clipboard -i
 unset PW
 sleep 1

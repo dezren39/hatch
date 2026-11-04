@@ -10,9 +10,12 @@
   permanent password was reset to the Bitwarden `rustdesk.amd-6-password`
   value and is now ACCEPTED (session advances past auth; see "Password
   reset" below for why the CLI could not do it and what was written).
-- **BLOCKED on video, not auth**: the host's Wayland ScreenCast/PipeWire
-  pipeline never delivers frames — client shows "Connection error:
-  Timeout" after the share is granted. See "Video leg" below.
+- **VIDEO WORKS (2026-11-04, code#5509 closed)**: a fresh client session
+  streams the laptop desktop and stays up (proof session: host cm panel
+  "Connected 00:06:47" and counting, vs a ~170s death ceiling all
+  morning; screenshots in `~/workspace/rd-work/proof-desktop-frames*.png`).
+  Two stacked root causes — a wedged portal daemon and the route riding
+  the shared SSH mux — see "Video leg" below before re-diagnosing.
 
 ## Why GL was broken (the precise wall)
 The morning hypothesis ("X servers lost GLX") was wrong — the X servers were
@@ -53,9 +56,10 @@ forward, and the processes (this happened mid-task). `launch.sh` rebuilds
 everything idempotently; the store paths + GC roots survive.
 
 ## Route to the laptop desktop
-1. `launch.sh` — /run/opengl-driver + Xvfb :99 (1600×1000) + SSH forward
-   `127.0.0.1:21118 → laptop 127.0.0.1:21118` (via `~/tools/laptop-ssh.sh`,
-   laptop = tailnet 100.99.113.103) + RustDesk client.
+1. `launch.sh` — /run/opengl-driver + Xvfb :99 (1600×1000) + DEDICATED
+   SSH forward `127.0.0.1:21118 → laptop 127.0.0.1:21118` (via
+   `forward.sh` — its own ssh process, NOT the shared laptop-ssh
+   ControlMaster; laptop = tailnet 100.99.113.103) + RustDesk client.
 2. Connect: `DISPLAY=:99 rustdesk --connect 127.0.0.1:21118` (the GUI Connect
    button ignores synthetic clicks; the CLI forwards to the running instance).
    Laptop device ID is 101234269; direct-IP avoids the rendezvous network.
@@ -89,23 +93,60 @@ everything idempotently; the store paths + GC roots survive.
   the host's "select the screen to be shared" step; host server log shows
   the portal handshake completing (`response: 0`, session handle issued).
 
-## Video leg — the remaining blocker (host-side Wayland capture)
-- After auth, the laptop shows the xdg portal picker
-  (class `hyprland-share-picker`, a real hyprctl client at [1080,720]
-  720×480 on this desktop). It can be driven with ydotool via HYPRLAND
-  geometry (fractions of the live window: Remember ≈ (0.03w, 0.84h),
-  monitor row ≈ (0.50w, 0.32h), Share ≈ (0.935w, 0.93h); ydotool click
-  code 0xC0, pointer feedback loop against `hyprctl cursorpos`, ~2.186×
-  fast-move scaling). "Remember this choice" was clicked once, so the
-  picker may not reappear. Helper used: `/tmp/rd-portal-click.py`
-  (ephemeral; recreate from this description if needed).
-- Even with the share granted: SelectSources returns response 0, codec
-  negotiation completes (encoder AV1), then NO PipeWire frames ever flow;
-  the client times out (~"Connection error: Timeout") and the host logs
-  `Connection closed: Timeout`. The stall is after the portal handshake,
-  in the ScreenCast Start / PipeWire negotiation on the laptop's Hyprland
-  stack — same family as the dead KRdp (code#5415) and the host UI's own
-  "Wayland support is experimental" flag. Not a credential or route issue.
+## Video leg — RESOLVED 2026-11-04 (code#5509): two stacked root causes
+
+The morning's diagnosis ("ScreenCast Start / PipeWire negotiation stalls,
+zero frames") was the visible end of TWO independent defects:
+
+1. **xdg-desktop-portal-hyprland was wedged.** Its main thread spun at
+   100% CPU in userspace (utime+stime delta 299 ticks / 3s) and the
+   daemon was D-Bus-deaf: RustDesk's ScreenCast **Start** never got a
+   Response signal (`wl-stage:start:no-response`), session **Close**
+   timed out in the frontend ("Failed to close session implementation:
+   Timeout was reached"), and even `busctl get-property … ScreenCast
+   version` timed out. CreateSession/SelectSources sometimes squeaked
+   through early on, which made it look like a PipeWire problem — no
+   PipeWire node is ever created when Start is never answered. It had
+   arrived wedged (the day's first CreateSession already NoReply'd at
+   07:37) after the frontend portal had been restarted at 06:57 against
+   the backend started 06:00. **Fix: `systemctl --user restart
+   xdg-desktop-portal-hyprland`** (later the frontend + rustdesk service
+   were restarted too, to clear a morning of poisoned session state).
+   Post-restart, Start completes in <1s and the GStreamer pipeline
+   confirms PLAYING. If it recurs: symptom-test is the busctl property
+   get + thread state R; the restart is the remedy. No flake defect was
+   found — xdph 1.4.1-git + Hyprland 0.56 stream fine when not wedged.
+2. **The route rode the shared SSH ControlMaster.** The old launch.sh
+   forward (`laptop-ssh.sh -N -L`) is owned by the single mux process
+   that also carries every other fleet session (25-min cargo-test output
+   streams, 1700s sleep-pollers, build watches). Under contention the
+   mux stalls and the forwarded stream freezes in both directions:
+   server logs `Connection closed: Timeout` at ~100–170s, client shows
+   "Connection error: Timeout", auto-reconnects — and every reconnect
+   mints a NEW portal session and a NEW share picker (the churn also
+   kept the frontend busy burying dead sessions, feeding intermittent
+   CreateSession NoReply). **Fix: dedicated ssh for the forward**
+   (`forward.sh`: ControlMaster=no / ControlPath=none; launch.sh now
+   cancels any mux-owned 21118 forwarding and starts the dedicated one).
+   Proof session then ran 6m47s+ with an active PipeWire link
+   (`rustdesk` node ← `capture_1 [active]`), continuous frame diffs,
+   and a working input round-trip.
+
+Picker mechanics (still needed per fresh connection — RustDesk's
+restore-token flow does not survive its own reconnect churn): the
+picker (class `hyprland-share-picker`, [1080,720] 720×480) is driven
+by `share-grant.py` (in this dir; run it ON the laptop, needs
+HYPRLAND_INSTANCE_SIGNATURE): Remember (0.03w, 0.84h) → monitor row
+(0.50w, 0.32h) → Share (0.935w, 0.93h) via ydotool + cursorpos
+feedback. Use the no-dismiss variant in this dir — dismissing a
+"stale" picker kills the fresh one.
+
+Noise not to chase: RustDesk 1.5.0's `--server` processes panic on
+exit (`cannot access a Thread Local Storage value during or after
+destruction`, 22× in one day) — it fires during teardown, after the
+fate of the connection is already decided; the service respawns a
+fresh `--server`. Also cosmetic: client is 1.4.5 vs server 1.5.0;
+the pairing streams fine.
 
 ## Notes
 - The sandbox client's own RustDesk ID is unchanged (config in

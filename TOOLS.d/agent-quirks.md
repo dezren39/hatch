@@ -32,3 +32,5 @@ old name). Drew's fix: "just rename the file." Rules:
   subject), and machine contract identifiers (needsDrew/whyDrew — owned by
   code#1290). After the replace, re-verify the protected set against git HEAD
   and confirm every path mentioned still resolves on disk.
+
+- Laptop-channel string mangling (2026-11-04): credential-shaped strings sent over the laptop-ssh channel can arrive silently altered — test literals landed in a file as the literal bytes `<redacted>`, producing fake 401/auth failures. Verify credential-shaped content by codepoint/hash after transfer; construct such strings split (concatenation) when they must survive transit.

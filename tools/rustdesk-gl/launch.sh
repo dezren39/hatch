@@ -31,12 +31,26 @@ if [ ! -e "/tmp/.X11-unix/X${DISP#:}" ]; then
   echo "launch: Xvfb $DISP started"
 fi
 
-# 3. SSH forward to the laptop's RustDesk (:21118) if not already listening
-if ! timeout 2 bash -c 'exec 3<>/dev/tcp/127.0.0.1/21118' 2>/dev/null; then
-  nohup "$HOME/tools/laptop-ssh.sh" -N -L 21118:127.0.0.1:21118 \
-    -o ExitOnForwardFailure=yes > /tmp/ssh-fwd-rustdesk.log 2>&1 &
+# 3. SSH forward to the laptop's RustDesk (:21118) — a DEDICATED ssh process
+#    via forward.sh, never the shared laptop-ssh ControlMaster (mux stalls
+#    froze the stream both ways -> server/client "Timeout" churn; see
+#    forward.sh and README "Video leg"). If the port is held by anything
+#    else (typically the mux master from an older launch), cancel that mux
+#    forwarding and take the port over.
+fwd_holder() {
+  ss -tlnp 2>/dev/null | grep -w '127.0.0.1:21118' | grep -oP 'pid=\K[0-9]+' | head -1
+}
+HOLDER=$(fwd_holder)
+if [ -n "$HOLDER" ] && ! tr '\0' ' ' < "/proc/$HOLDER/cmdline" 2>/dev/null | grep -q 'ControlPath=none'; then
+  ssh -S "$HOME/.ssh/cm-user@100.99.113.103:22" -O cancel \
+    -L 21118:127.0.0.1:21118 user@100.99.113.103 2>/dev/null || true
+  sleep 1
+  HOLDER=$(fwd_holder)
+fi
+if [ -z "$HOLDER" ]; then
+  nohup "$HOME/tools/rustdesk-gl/forward.sh" > /tmp/ssh-fwd-rustdesk.log 2>&1 &
   sleep 5
-  echo "launch: ssh forward 127.0.0.1:21118 -> laptop started"
+  echo "launch: dedicated ssh forward 127.0.0.1:21118 -> laptop started"
 fi
 
 # 4. RustDesk client (software GL)
