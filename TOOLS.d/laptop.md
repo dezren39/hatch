@@ -78,3 +78,30 @@
   180s keepalive, exits after 1 idle hour; client env LAPTOP_AGENT_NO_BROKER=1
   forces direct CONNECT. Warm single calls now ~0.39-0.45s ≈ warm ssh ~0.41s.
   Broker log: ~/.cache/laptop-agent/broker.log.
+
+## fleet-brokers (BUILT + CUT OVER 2026-11-04, code issue #5362)
+- Two Rust services on the laptop (systemd user units, enabled):
+  `secrets-broker` on 100.99.113.103:4800 (runs `bws` on the laptop,
+  caches the whole secret set, 900s TTL stale-while-revalidate) and
+  `queue-broker` on 100.99.113.103:4801 (the repo-queue command surface
+  as HTTP endpoints; holds NO key on disk — fetches
+  `supabase.muse-dev2.service-role-key` / `.project-url` from the
+  secrets broker at first use, re-fetches on a PostgREST 401).
+- Sandbox side connects ONLY to the session proxy: `~/tools/repo-queue`
+  (Rust client) goes through `~/tools/laptop-agent-broker.py`, whose
+  pools are per-port and which presents the per-service token via its
+  `token_file` field. Tokens (values never in files' content): sandbox
+  `~/tools/queue-broker-token`, `~/tools/secrets-broker-token` (600,
+  gitignored); laptop `~/.config/queue-broker/token`,
+  `~/.config/secrets-broker/token`.
+- `~/tools/repo-queue.py` is a shim: execs the Rust client, falls back
+  to `~/tools/repo_queue_legacy.py` only on exit 3 (broker path
+  unavailable) or `REPO_QUEUE_VIA_BROKER=0`; it re-exports the legacy
+  module's names for importers. Verified live 2026-11-04: health
+  ~3s via broker vs ~9-10s legacy; shadow-queue canary tasks 9343/9344
+  ran enqueue/claim/checkpoint/park/cancel/complete through the broker.
+- Sources: sandbox `~/tools/fleet-brokers/` (Cargo workspace:
+  secrets-broker, queue-broker, repo-queue); laptop build tree
+  `~/fleet-brokers-src/`, binaries `~/fleet-brokers/bin/`. Nix package:
+  `pkgs/fleet-brokers` in dezren39/nix (build-verified; module not yet
+  enabled in any machine config — the hand-installed units are live).
