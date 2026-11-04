@@ -87,7 +87,7 @@
   use the agent for BATCHES and LONG JOBS (detached, survive client death,
   offset polling, exit codes propagate), keep laptop-ssh.sh for single quick
   commands, interactive work, and sudo. Phase 2 (migrate fleet call sites) and
-  phase 3 (declare in dezren39/nix NixOS config) are open on #5343.
+  phase 3 (declare in dezren39/darwin-nix NixOS config) are open on #5343.
 
 ## laptop-agent broker — warm connections (2026-11-04, later)
 - Cold-call anatomy measured: Python startup ~25-80ms; CONNECT handshake ~1.8s
@@ -125,7 +125,7 @@
 - Sources: sandbox `~/tools/fleet-brokers/` (Cargo workspace:
   secrets-broker, queue-broker, repo-queue); laptop build tree
   `~/fleet-brokers-src/`, binaries `~/fleet-brokers/bin/`. Nix package:
-  `pkgs/fleet-brokers` + `pkgs/laptop-agent` in dezren39/nix, PR #1459
+  `pkgs/fleet-brokers` + `pkgs/laptop-agent` in dezren39/darwin-nix, PR #1459
   (build + module check verified on amd; the home module launches all
   three services when enabled; no machine config enables it yet — the
   hand-installed units are live).

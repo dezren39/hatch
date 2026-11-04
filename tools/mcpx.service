@@ -1,6 +1,6 @@
 # /etc/systemd/system/mcpx.service — mcpx MCP gateway daemon.
 # WRITTEN BY ~/tools/install-mcpx-service.sh EVERY BOOT (/etc is ephemeral).
-# Canonical source: ~/tools/mcpx.service (this file). Pushed to dezren39/nix.
+# Canonical source: ~/tools/mcpx.service (this file). Pushed to dezren39/darwin-nix.
 [Unit]
 Description=mcpx MCP gateway daemon
 After=network-online.target

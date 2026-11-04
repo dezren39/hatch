@@ -1,5 +1,5 @@
 {
-  description = "Pinned omnibin with nixpkgs follows, plus mcpx from dezren39/nix (used by dispatcher.sh)";
+  description = "Pinned omnibin with nixpkgs follows, plus mcpx from dezren39/darwin-nix (used by dispatcher.sh)";
 
   inputs = {
     # Pinned to the exact nixpkgs rev omnibin uses, so fzakaria's cachix
@@ -9,11 +9,11 @@
     # Use our nixpkgs for omnibin's build — one nixpkgs in the lock, not two.
     omnibin.inputs.nixpkgs.follows = "nixpkgs";
     # dezren39's nix config — we only consume its mcpx package.
-    dezren39-nix.url = "github:dezren39/nix";
+    dezren39-nix.url = "github:dezren39/darwin-nix";
   };
 
   # Re-export omnibin's outputs (built against our nixpkgs via follows),
-  # deep-merged with the mcpx package from dezren39/nix, so both
+  # deep-merged with the mcpx package from dezren39/darwin-nix, so both
   # `this-flake#omnibin` and `this-flake#mcpx` resolve from one lockfile.
   outputs = inputs: inputs.nixpkgs.lib.recursiveUpdate inputs.omnibin.outputs {
     # dezren39's package.nix is documented pure-Go (modernc.org/sqlite chosen
