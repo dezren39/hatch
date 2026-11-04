@@ -33,6 +33,25 @@ TARGET_PORT = 4799
 PROXY_PORT = 3130
 TOKEN_FILE = Path.home() / "tools/laptop-agent-token"
 OFFSET_DIR = Path.home() / ".cache/laptop-agent"
+TRIP_LOG = Path.home() / ".local/state/laptop-agent/trips.jsonl"
+
+
+def _log_trip(trip, path, total_ms, status):
+    """Append one client-side trip record (single O_APPEND write).
+    Logging must never break or visibly delay a call: errors swallowed."""
+    try:
+        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "trip": trip, "path": path,
+               "total_ms": total_ms, "status": status}
+        TRIP_LOG.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(TRIP_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                     0o644)
+        try:
+            os.write(fd, (json.dumps(rec) + "\n").encode())
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
 
 
 def tunnel_socket(port=None):
@@ -78,7 +97,7 @@ BROKER_SOCK = OFFSET_DIR / "broker.sock"
 BROKER_PY = Path.home() / "tools/laptop-agent-broker.py"
 
 
-def _broker_roundtrip(method, path, body):
+def _broker_roundtrip(method, path, body, trip=None):
     """One request through the warm-connection broker. Returns
     (status, obj) or None when the broker is unreachable."""
     import struct
@@ -89,7 +108,7 @@ def _broker_roundtrip(method, path, body):
             s.settimeout(660)
             s.connect(str(BROKER_SOCK))
             payload = json.dumps({"method": method, "path": path,
-                                  "body": body}).encode()
+                                  "body": body, "trip": trip}).encode()
             s.sendall(struct.pack(">Q", len(payload)) + payload)
             hdr = b""
             while len(hdr) < 8:
@@ -125,28 +144,43 @@ def _broker_roundtrip(method, path, body):
 
 
 def request(method, path, body=None):
-    if not os.environ.get("LAPTOP_AGENT_NO_BROKER"):
-        got = _broker_roundtrip(method, path, body)
-        if got is not None:
-            status, obj = got
-            if status >= 400:
-                sys.exit(f"laptop-agent: HTTP {status}: "
-                         f"{obj.get('error', obj)}")
-            return obj
-    token = TOKEN_FILE.read_text().strip()
-    conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT, timeout=660)
-    payload = json.dumps(body) if body is not None else None
-    conn.request(method, path, body=payload, headers={
-        "X-Agent-Token": token,
-        "Content-Type": "application/json",
-    })
-    resp = conn.getresponse()
-    data = resp.read()
-    conn.close()
-    obj = json.loads(data or b"{}")
-    if resp.status >= 400:
-        sys.exit(f"laptop-agent: HTTP {resp.status}: {obj.get('error', obj)}")
-    return obj
+    trip = os.urandom(6).hex()  # 12 hex chars, one per request
+    if method == "POST" and isinstance(body, dict) \
+            and path in ("/exec", "/jobs"):
+        # The trip id also rides inside the body: the session proxy
+        # forwards bodies verbatim but not arbitrary socket-protocol
+        # fields, so this is the carrier that always reaches the daemon.
+        body = dict(body, trip=trip)
+    t0 = time.time()
+    status = None
+    try:
+        if not os.environ.get("LAPTOP_AGENT_NO_BROKER"):
+            got = _broker_roundtrip(method, path, body, trip)
+            if got is not None:
+                status, obj = got
+                if status >= 400:
+                    sys.exit(f"laptop-agent: HTTP {status}: "
+                             f"{obj.get('error', obj)}")
+                return obj
+        token = TOKEN_FILE.read_text().strip()
+        conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT, timeout=660)
+        payload = json.dumps(body) if body is not None else None
+        conn.request(method, path, body=payload, headers={
+            "X-Agent-Token": token,
+            "X-Trip-Id": trip,
+            "Content-Type": "application/json",
+        })
+        resp = conn.getresponse()
+        status = resp.status
+        data = resp.read()
+        conn.close()
+        obj = json.loads(data or b"{}")
+        if status >= 400:
+            sys.exit(f"laptop-agent: HTTP {status}: "
+                     f"{obj.get('error', obj)}")
+        return obj
+    finally:
+        _log_trip(trip, path, int((time.time() - t0) * 1000), status)
 
 
 def split_cmd(args):

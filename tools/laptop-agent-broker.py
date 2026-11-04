@@ -76,7 +76,8 @@ def pool_get(port):
     return open_conn(port)
 
 
-def do_request(method, path, body, port=4799, token_file=None, client=True):
+def do_request(method, path, body, port=4799, token_file=None, client=True,
+               trip=None):
     """One request on a pooled warm connection; one retry on a fresh
     connection if the pooled one went stale."""
     global _last_used
@@ -91,10 +92,11 @@ def do_request(method, path, body, port=4799, token_file=None, client=True):
     for attempt in (1, 2):
         conn = pool_get(port) if attempt == 1 else open_conn(port)
         try:
-            conn.request(method, path, body=payload, headers={
-                "X-Agent-Token": token,
-                "Content-Type": "application/json",
-            })
+            headers = {"X-Agent-Token": token,
+                       "Content-Type": "application/json"}
+            if trip:
+                headers["X-Trip-Id"] = trip
+            conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
             data = resp.read()
             pool_put(port, conn)
@@ -159,7 +161,8 @@ class Handler(socketserver.BaseRequestHandler):
                 status, body = do_request(
                     req["method"], req["path"], req.get("body"),
                     port=int(req.get("port", 4799)),
-                    token_file=req.get("token_file"))
+                    token_file=req.get("token_file"),
+                    trip=req.get("trip"))
                 write_msg(self.request, {"status": status, "body": body})
             except Exception as e:
                 write_msg(self.request, {

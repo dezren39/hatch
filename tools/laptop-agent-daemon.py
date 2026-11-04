@@ -19,6 +19,7 @@ API (JSON):
 Job stdout/stderr spool to ~/.local/state/laptop-agent/jobs/<id>/ so a
 daemon restart does not lose results. Finished jobs reaped after 24h.
 """
+import hashlib
 import hmac
 import json
 import os
@@ -48,6 +49,34 @@ STARTED = time.time()
 TOKEN = TOKEN_FILE.read_text().strip()
 JOBS = {}                    # job_id -> dict
 JOBS_LOCK = threading.Lock()
+TRIPS_FILE = STATE_DIR / "trips.jsonl"
+
+
+def log_trip(trip, kind, cmd_str, duration_ms, exit_code, out_bytes,
+             err_bytes):
+    """Append one trip record (single O_APPEND write) to trips.jsonl.
+
+    Safety: only the command's first token and the sha256 of the full
+    command string are recorded — never raw command text, environment,
+    headers, or token values. Perf/safety: logging must never fail or
+    visibly delay the request, so every error is swallowed."""
+    try:
+        parts = (cmd_str or "").split()
+        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "trip": trip, "kind": kind,
+               "cmd0": parts[0] if parts else "",
+               "cmd_sha256": hashlib.sha256(
+                   (cmd_str or "").encode("utf-8", "replace")).hexdigest(),
+               "duration_ms": duration_ms, "exit": exit_code,
+               "out_bytes": out_bytes, "err_bytes": err_bytes}
+        fd = os.open(TRIPS_FILE, os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                     0o644)
+        try:
+            os.write(fd, (json.dumps(rec) + "\n").encode())
+        finally:
+            os.close(fd)
+    except Exception:
+        pass
 
 
 def tail_bytes(data: bytes, cap: int):
@@ -62,8 +91,10 @@ def run_one(spec, timeout_s):
     env.update(spec.get("env") or {})
     if spec.get("shell") is not None:
         argv = ["/bin/bash", "-lc", spec["shell"]]
+        cmd_str = spec["shell"]
     else:
         argv = list(spec["argv"])
+        cmd_str = " ".join(argv)
     t0 = time.time()
     try:
         p = subprocess.run(argv, cwd=cwd, env=env, capture_output=True,
@@ -74,18 +105,23 @@ def run_one(spec, timeout_s):
                 "stdout": out.decode("utf-8", "replace"),
                 "stderr": err.decode("utf-8", "replace"),
                 "duration_ms": int((time.time() - t0) * 1000),
-                "truncated": out_tr or err_tr}
+                "truncated": out_tr or err_tr,
+                "_cmd": cmd_str, "_out_bytes": len(p.stdout),
+                "_err_bytes": len(p.stderr)}
     except subprocess.TimeoutExpired as e:
         return {"exit": None, "timeout": True,
                 "stdout": (e.stdout or b"").decode("utf-8", "replace"),
                 "stderr": (e.stderr or b"").decode("utf-8", "replace"),
                 "duration_ms": int((time.time() - t0) * 1000),
-                "truncated": False}
+                "truncated": False,
+                "_cmd": cmd_str, "_out_bytes": len(e.stdout or b""),
+                "_err_bytes": len(e.stderr or b"")}
     except Exception as e:  # cwd missing, argv[0] missing, ...
         return {"exit": None, "error": f"{type(e).__name__}: {e}",
                 "stdout": "", "stderr": "",
                 "duration_ms": int((time.time() - t0) * 1000),
-                "truncated": False}
+                "truncated": False,
+                "_cmd": cmd_str, "_out_bytes": 0, "_err_bytes": 0}
 
 
 def job_dir(job_id):
@@ -192,6 +228,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/exec":
             body = self._body()
+            trip = self.headers.get("X-Trip-Id") or body.get("trip")
+            if not isinstance(trip, str) or not trip:
+                trip = secrets.token_hex(6)
             timeout = min(int(body.get("timeout_s", EXEC_TIMEOUT_DEFAULT)),
                           EXEC_TIMEOUT_MAX)
             cmds = body.get("cmds") or []
@@ -203,9 +242,18 @@ class Handler(BaseHTTPRequestHandler):
                 results = [run_one(c, timeout) for c in cmds]
             finally:
                 SEMA.release()
+            for r in results:
+                cmd_str = r.pop("_cmd", "")
+                out_b = r.pop("_out_bytes", 0)
+                err_b = r.pop("_err_bytes", 0)
+                log_trip(trip, "exec", cmd_str, r.get("duration_ms"),
+                         r.get("exit"), out_b, err_b)
             return self._send(200, {"results": results})
         if path == "/jobs":
             body = self._body()
+            trip = self.headers.get("X-Trip-Id") or body.get("trip")
+            if not isinstance(trip, str) or not trip:
+                trip = secrets.token_hex(6)
             cwd = body.get("cwd") or str(Path.home())
             if body.get("shell") is not None:
                 argv = ["/bin/bash", "-lc", body["shell"]]
@@ -228,7 +276,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": f"{type(e).__name__}: {e}"})
             job = {"id": job_id, "proc": proc, "cwd": cwd,
                    "cmd_repr": cmd_repr, "started_at": time.time(),
-                   "ended_at": None, "_files": (out_f, err_f)}
+                   "ended_at": None, "_files": (out_f, err_f),
+                   "trip": trip}
             with JOBS_LOCK:
                 JOBS[job_id] = job
 
@@ -240,6 +289,15 @@ class Handler(BaseHTTPRequestHandler):
                         f.close()
                     except OSError:
                         pass
+                try:
+                    d = job_dir(j["id"])
+                    out_b = (d / "stdout").stat().st_size
+                    err_b = (d / "stderr").stat().st_size
+                except OSError:
+                    out_b = err_b = 0
+                log_trip(j["trip"], "job", j["cmd_repr"],
+                         int((j["ended_at"] - j["started_at"]) * 1000),
+                         j["proc"].returncode, out_b, err_b)
             threading.Thread(target=watch, daemon=True).start()
             reap_old_jobs()
             return self._send(200, {"job_id": job_id})
