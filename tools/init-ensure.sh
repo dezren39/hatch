@@ -35,15 +35,23 @@ fi
 # No-op when a broker is already running — the pgrep gate skips the spawn,
 # and the broker itself probes its socket and exits quietly if a live one
 # owns it. Best-effort: never prints, never changes the exit contract.
+# Since step 3 (code#5431) the broker is `fleet proxy serve`; the Python
+# broker remains the fallback when no fleet binary is installed, and the
+# gate accepts either process as "running".
 {
   BROKER_SOCK=/home/hatch/.cache/laptop-agent/broker.sock
   BROKER_LOG=/home/hatch/.cache/laptop-agent/broker.log
-  if [ ! -S "$BROKER_SOCK" ] || ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1; then
+  if [ ! -S "$BROKER_SOCK" ] || { ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1 && ! pgrep -f 'tools/fleet proxy serve' >/dev/null 2>&1; }; then
     mkdir -p /home/hatch/.cache/laptop-agent
     exec 9>"/home/hatch/.cache/laptop-agent/.broker-ensure.lock"
     if flock -n 9; then
-      setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
-        >>"$BROKER_LOG" 2>&1 </dev/null &
+      if [ -x /home/hatch/tools/fleet ]; then
+        setsid nohup /home/hatch/tools/fleet proxy serve \
+          >>"$BROKER_LOG" 2>&1 </dev/null &
+      else
+        setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
+          >>"$BROKER_LOG" 2>&1 </dev/null &
+      fi
     fi
     exec 9>&-
   fi
