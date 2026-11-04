@@ -33,13 +33,14 @@ spec.loader.exec_module(la)
 
 SOCK_DIR = Path.home() / ".cache/laptop-agent"
 SOCK_PATH = SOCK_DIR / "broker.sock"
-POOL_SIZE = 2
+POOL_SIZE = int(os.environ.get("LAPTOP_AGENT_POOL", "6"))
 IDLE_EXIT_S = 3600
 KEEPALIVE_S = 180
 
 _pool = []
 _pool_lock = threading.Lock()
-_last_used = time.time()
+_last_used = time.time()       # client requests only; keepalive must not
+                               # reset this or the idle exit never fires
 
 
 def open_conn():
@@ -67,11 +68,12 @@ def pool_get():
     return open_conn()
 
 
-def do_request(method, path, body):
+def do_request(method, path, body, client=True):
     """One request on a pooled warm connection; one retry on a fresh
     connection if the pooled one went stale."""
     global _last_used
-    _last_used = time.time()
+    if client:
+        _last_used = time.time()
     token = la.TOKEN_FILE.read_text().strip()
     payload = json.dumps(body) if body is not None else None
     last_err = None
@@ -109,7 +111,7 @@ def keepalive_loop():
         if time.time() - _last_used > IDLE_EXIT_S:
             os._exit(0)
         try:
-            do_request("GET", "/health", None)
+            do_request("GET", "/health", None, client=False)
         except Exception:
             pass
 
