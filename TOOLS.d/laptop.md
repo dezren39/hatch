@@ -106,8 +106,10 @@
 - Sources: sandbox `~/tools/fleet-brokers/` (Cargo workspace:
   secrets-broker, queue-broker, repo-queue); laptop build tree
   `~/fleet-brokers-src/`, binaries `~/fleet-brokers/bin/`. Nix package:
-  `pkgs/fleet-brokers` in dezren39/nix (build-verified; module not yet
-  enabled in any machine config — the hand-installed units are live).
+  `pkgs/fleet-brokers` + `pkgs/laptop-agent` in dezren39/nix, PR #1459
+  (build + module check verified on amd; the home module launches all
+  three services when enabled; no machine config enables it yet — the
+  hand-installed units are live).
 - Init autostarts the session proxy (2026-11-04): `~/tools/init-ensure.sh`
   ensures the laptop-agent broker is running on every prelude — cheap
   pgrep/socket gate, flock-serialized spawn, and the broker self-dedupes
