@@ -287,7 +287,28 @@ SS_DIR=/home/hatch/hatch-personal/scripts/sysstat
 if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
   if ! systemctl is-active --quiet sysstat-collector.service 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sysstat collector" >> "$LOG"
-    timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    # Apt-lock contention is NOT an init failure (2026-11-04): the sandbox
+    # platform's post-boot os-intent replay holds /var/lib/apt/lists/lock
+    # for many minutes after every recycle, so this installer's apt-get
+    # fails instantly on the lock in essentially every boot. Counting it
+    # kept FAILURES>=1 forever -> boot marker never written -> init-ensure
+    # re-spawned the full init (~65s, incl. a 60s nix-persist du) on every
+    # agent prelude, all day, in every boot. A lock collision is now a
+    # DEFER: logged, not counted, and a detached retry converges the
+    # collector once the lock frees. Real installer failures still count.
+    SS_TMP=$(mktemp)
+    if timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$SS_TMP" 2>&1; then
+      cat "$SS_TMP" >> "$LOG"
+    else
+      cat "$SS_TMP" >> "$LOG"
+      if grep -q "Could not get lock\|Unable to lock directory" "$SS_TMP"; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt lock held by another process — not counted as a failure; detached retry queued)" >> "$LOG"
+        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
+      else
+        FAILURES=$((FAILURES+1))
+      fi
+    fi
+    rm -f "$SS_TMP"
   fi
 fi
 
