@@ -66,7 +66,65 @@ class TunnelHTTP(http.client.HTTPConnection):
         self.sock = tunnel_socket()
 
 
+BROKER_SOCK = OFFSET_DIR / "broker.sock"
+BROKER_PY = Path.home() / "tools/laptop-agent-broker.py"
+
+
+def _broker_roundtrip(method, path, body):
+    """One request through the warm-connection broker. Returns
+    (status, obj) or None when the broker is unreachable."""
+    import struct
+    import subprocess
+    for attempt in (1, 2):
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(660)
+            s.connect(str(BROKER_SOCK))
+            payload = json.dumps({"method": method, "path": path,
+                                  "body": body}).encode()
+            s.sendall(struct.pack(">Q", len(payload)) + payload)
+            hdr = b""
+            while len(hdr) < 8:
+                chunk = s.recv(8 - len(hdr))
+                if not chunk:
+                    raise ConnectionError("broker closed")
+                hdr += chunk
+            (n,) = struct.unpack(">Q", hdr)
+            data = b""
+            while len(data) < n:
+                chunk = s.recv(min(1 << 20, n - len(data)))
+                if not chunk:
+                    raise ConnectionError("broker closed mid-reply")
+                data += chunk
+            s.close()
+            obj = json.loads(data)
+            return obj["status"], obj["body"]
+        except (OSError, ConnectionError, KeyError, ValueError):
+            if attempt == 1 and not os.environ.get("LAPTOP_AGENT_NO_BROKER"):
+                # Auto-start the broker (ControlMaster pattern), then retry.
+                OFFSET_DIR.mkdir(parents=True, exist_ok=True)
+                log = open(OFFSET_DIR / "broker.log", "ab")
+                subprocess.Popen([sys.executable, str(BROKER_PY)],
+                                 stdout=log, stderr=log,
+                                 start_new_session=True)
+                for _ in range(50):
+                    if BROKER_SOCK.exists():
+                        break
+                    time.sleep(0.1)
+                continue
+            return None
+    return None
+
+
 def request(method, path, body=None):
+    if not os.environ.get("LAPTOP_AGENT_NO_BROKER"):
+        got = _broker_roundtrip(method, path, body)
+        if got is not None:
+            status, obj = got
+            if status >= 400:
+                sys.exit(f"laptop-agent: HTTP {status}: "
+                         f"{obj.get('error', obj)}")
+            return obj
     token = TOKEN_FILE.read_text().strip()
     conn = TunnelHTTP(TARGET_HOST, TARGET_PORT, timeout=660)
     payload = json.dumps(body) if body is not None else None
