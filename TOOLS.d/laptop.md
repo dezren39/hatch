@@ -1,5 +1,24 @@
 # TOOLS.d/laptop.md — split verbatim from TOOLS.md 2026-10-25 (token review #2)
 
+## SUDO + THE AMD SWITCH ARE MINE — NEVER DREW'S (standing rule since 2026-10-27; violated twice on 2026-11-04 alone)
+- The laptop `user` sudo password is in 1Password: Dev vault item `user@amd`
+  (id `nur7fn62w2utvuvfrqbtvp6pq4`, vault id `65am7pv6dofhrs2tuhvpzi6vay`).
+  Fetch ONLY via `op item get <id> --vault <vault-id> --format json` (after
+  `source ~/tools/op-env.sh`), taking the non-empty field with id `password`.
+  `op item get --fields password` returns a bogus 65-char string sudo rejects.
+  Pipe it, never print or file it: `printf '%s\n' "$PW" | ~/tools/laptop-ssh.sh 'sudo -S -p "" bash -c "..."'`
+  (laptop-ssh.sh passes stdin through since the 2026-10-26 rewrite).
+- The amd switch is Muse's job, full stop: primary `~/git/code` at latest
+  origin/main + clean, then `sudo nixos-rebuild switch --flake ~/git/code#amd`.
+  If the flake eval races (source changed during evaluation — pm-git-sync /
+  tree churn), fall back to the direct path with the prebuilt toplevel:
+  `nix-env --profile /nix/var/nix/profiles/system --set <toplevel>` then
+  `<toplevel>/bin/switch-to-configuration switch`. Verify: profile generation
+  incremented and /run/current-system resolves to the intended toplevel.
+  NEVER tell Drew a switch or any laptop sudo step is "his" — that claim was
+  wrong on 2026-10-27, corrected on 2026-10-28 (MEMORY.md + topics), and
+  repeated on 2026-11-04; it does not get repeated again.
+
 ## Laptop SSH drops — ROOT CAUSED 2026-10-25 (MaxStartups, not "flakiness")
 - The laptop's sshd runs stock **MaxStartups 10:30:100** (no override in
   /etc/ssh/sshd_config). New-connection setups through the tailnet route take
