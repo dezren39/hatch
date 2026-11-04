@@ -24,6 +24,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -45,6 +46,16 @@ EXEC_TIMEOUT_MAX = 600
 JOB_TTL_S = 24 * 3600
 SEMA = threading.Semaphore(int(os.environ.get("LAPTOP_AGENT_SLOTS", "32")))
 STARTED = time.time()
+
+# Shell for `shell` specs. Never hardcode /bin/bash: on NixOS it does not
+# exist (the 2026-11-04 laptop-ssh retirement verification caught shell
+# mode failing with ENOENT for exactly this reason). Resolve once from
+# the daemon's own PATH, then the standard NixOS locations.
+BASH = next((p for p in (shutil.which("bash"),
+                         "/etc/profiles/per-user/user/bin/bash",
+                         "/run/current-system/sw/bin/bash",
+                         "/bin/bash")
+             if p and os.path.exists(p)), "/bin/bash")
 
 TOKEN = TOKEN_FILE.read_text().strip()
 JOBS = {}                    # job_id -> dict
@@ -90,7 +101,7 @@ def run_one(spec, timeout_s):
     env = dict(os.environ)
     env.update(spec.get("env") or {})
     if spec.get("shell") is not None:
-        argv = ["/bin/bash", "-lc", spec["shell"]]
+        argv = [BASH, "-lc", spec["shell"]]
         cmd_str = spec["shell"]
     else:
         argv = list(spec["argv"])
@@ -256,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
                 trip = secrets.token_hex(6)
             cwd = body.get("cwd") or str(Path.home())
             if body.get("shell") is not None:
-                argv = ["/bin/bash", "-lc", body["shell"]]
+                argv = [BASH, "-lc", body["shell"]]
                 cmd_repr = body["shell"]
             else:
                 argv = list(body["argv"])
