@@ -69,3 +69,12 @@
   offset polling, exit codes propagate), keep laptop-ssh.sh for single quick
   commands, interactive work, and sudo. Phase 2 (migrate fleet call sites) and
   phase 3 (declare in dezren39/nix NixOS config) are open on #5343.
+
+## laptop-agent broker — warm connections (2026-11-04, later)
+- Cold-call anatomy measured: Python startup ~25-80ms; CONNECT handshake ~1.8s
+  (DERP); warm request RTT ~0.22-0.35s. Python was never the problem.
+- ~/tools/laptop-agent-broker.py: auto-started by the client when
+  ~/.cache/laptop-agent/broker.sock is missing; pool of 2 keep-alive tunnels,
+  180s keepalive, exits after 1 idle hour; client env LAPTOP_AGENT_NO_BROKER=1
+  forces direct CONNECT. Warm single calls now ~0.39-0.45s ≈ warm ssh ~0.41s.
+  Broker log: ~/.cache/laptop-agent/broker.log.
