@@ -8,8 +8,9 @@
 # cores> unless the caller already set it.
 #
 # Usage: fleet-build-lock [--] command [args...]
-# Run it ON the host doing the building (the laptop), e.g.:
-#   ~/tools/laptop-ssh.sh '~/tools/fleet-build-lock cargo test ...'
+# Run it ON the host doing the building (the laptop), e.g. from the
+# sandbox via the laptop agent:
+#   python3 ~/tools/laptop-agent.py exec --shell -- '~/tools/fleet-build-lock cargo test ...'
 # Env: FLEET_BUILD_SLOTS (default 2)
 #      FLEET_BUILD_LOCKDIR (default ~/.fleet-build-locks)
 set -u
