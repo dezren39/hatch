@@ -6,11 +6,13 @@
   laptop's server).
 - **Connection reaches the laptop** (direct-IP via SSH forward) and gets a
   password prompt from the real server.
-- **BLOCKED on credential**: Bitwarden `rustdesk.amd-6-password` is rejected
-  by the laptop's RustDesk service — verified 4× (2 typed, 2 pasted
-  byte-exact, once after restarting the laptop service; dot count = 24 =
-  secret length each time). The vault value ≠ the laptop's configured
-  permanent password. Reconcile one side, then `auth.sh` finishes in seconds.
+- **Credential RECONCILED (2026-11-04, per Drew's ruling)**: the laptop's
+  permanent password was reset to the Bitwarden `rustdesk.amd-6-password`
+  value and is now ACCEPTED (session advances past auth; see "Password
+  reset" below for why the CLI could not do it and what was written).
+- **BLOCKED on video, not auth**: the host's Wayland ScreenCast/PipeWire
+  pipeline never delivers frames — client shows "Connection error:
+  Timeout" after the share is granted. See "Video leg" below.
 
 ## Why GL was broken (the precise wall)
 The morning hypothesis ("X servers lost GLX") was wrong — the X servers were
@@ -60,12 +62,57 @@ everything idempotently; the store paths + GC roots survive.
 3. `auth.sh` — Bitwarden-fed clipboard paste into the password dialog
    (see its header for the focus/geometry lessons and the credential state).
 
+## Password reset (2026-11-04) — why the CLI is a dead end, what worked
+- `rustdesk --set-password` on the laptop's Nix build (1.5.0, also 1.4.3)
+  NEVER writes: every regime (no display / session env cloned from the
+  service / service stopped / software-GL / `env -i`) dies with SIGABRT in
+  libsciter-gtk's exit handlers (flexi_logger TLS panic under the hood).
+  Config mtime never moved. Running it against the live service (IPC) also
+  had no effect — the next login still rejected the value. Do not retry it.
+- What the drifted config actually held: the `password` field (214 chars,
+  prefix "00") was the new-format storage DOUBLE-WRAPPED — a legacy "00"
+  secretbox layer around a complete "01…" storage string (decrypts with
+  key = machine-id bytes; inner = 118 bytes, prefix "01"). Valid storage
+  of the wrong (drifted) password, in a form no setter produced on purpose.
+- RustDesk 1.5.0 storage format (from the vendored source,
+  `libs/hbb_common/src/config/permanent_password.rs` — read it before
+  touching this again): keep `salt` from RustDesk.toml stable;
+  `h1 = SHA256(password || salt)`; hashed = `"00" + base64(h1)`;
+  field = `"01" + base64(0x01 || nonce24 || secretbox(hashed))` with
+  key = machine-uid bytes zero-padded to 32. The reset computed exactly
+  that on the laptop (libsodium via ctypes, vault value piped on stdin,
+  never in argv/files/logs), self-verified by decrypting the field back to
+  the same h1, spliced the single `password` line with the service
+  stopped, and restarted it. Backups: `RustDesk.toml.bak-20261104` and
+  `RustDesk.toml.bak-prewrite` beside the config.
+- Proof of acceptance: fresh client connect → paste → session advanced to
+  the host's "select the screen to be shared" step; host server log shows
+  the portal handshake completing (`response: 0`, session handle issued).
+
+## Video leg — the remaining blocker (host-side Wayland capture)
+- After auth, the laptop shows the xdg portal picker
+  (class `hyprland-share-picker`, a real hyprctl client at [1080,720]
+  720×480 on this desktop). It can be driven with ydotool via HYPRLAND
+  geometry (fractions of the live window: Remember ≈ (0.03w, 0.84h),
+  monitor row ≈ (0.50w, 0.32h), Share ≈ (0.935w, 0.93h); ydotool click
+  code 0xC0, pointer feedback loop against `hyprctl cursorpos`, ~2.186×
+  fast-move scaling). "Remember this choice" was clicked once, so the
+  picker may not reappear. Helper used: `/tmp/rd-portal-click.py`
+  (ephemeral; recreate from this description if needed).
+- Even with the share granted: SelectSources returns response 0, codec
+  negotiation completes (encoder AV1), then NO PipeWire frames ever flow;
+  the client times out (~"Connection error: Timeout") and the host logs
+  `Connection closed: Timeout`. The stall is after the portal handshake,
+  in the ScreenCast Start / PipeWire negotiation on the laptop's Hyprland
+  stack — same family as the dead KRdp (code#5415) and the host UI's own
+  "Wayland support is experimental" flag. Not a credential or route issue.
+
 ## Notes
 - The sandbox client's own RustDesk ID is unchanged (config in
   `~/.config/rustdesk` survived the recycle).
-- The laptop's `rustdesk.service` was restarted once during diagnosis
-  (activation experiment for its 05:49 config write); it is active and
-  listening on :21118.
+- The laptop's `rustdesk.service` has been restarted several times during
+  diagnosis and for the password reset; final state verified active and
+  listening on :21118 with the reconciled credential in place.
 - xclip 0.13 lives at `/nix/store/s5dlvs8ripp19rc31n55hrrcg7ngfb8c-xclip-0.13/bin/xclip`
   (fetched via omnibin; `~/tools/bin/xclip` has no stub).
 - xdotool focus: no WM in Xvfb → use `xdotool windowfocus --sync <id>`,
