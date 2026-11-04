@@ -16,7 +16,7 @@ if [ -f "$ENV_FILE" ]; then
 else
   echo "opencode-serve-start: WARNING $ENV_FILE missing; starting without prepared env" >&2
 fi
-# The fleet's OpenCode is the developing-today/opencode FORK, v2 line,
+# The fleet's OpenCode is the developing-today-forks/opencode FORK, v2 line,
 # installed into the nix profile from the fork flake at the rev pinned by
 # ~/git/devtoday-code/flake.lock (inputs.opencode) — the same source the
 # laptop's home-manager config uses (inputs.opencode.packages.*.opencode).

@@ -32,8 +32,8 @@ SQL_TMPDIR = os.path.join(HOME, "tmp")  # /tmp is a small tmpfs on this box
 # Fleet repo slugs. Snapshots are gh-api only — no local clones.
 REPOS = [
     "developing-today/code",
-    "developing-today/opencode",
-    "developing-today/openchamber",
+    "developing-today-forks/opencode",
+    "developing-today-forks/openchamber",
     "dezren39/darwin-nix",
 ]
 NIX_REPO = "dezren39/darwin-nix"
