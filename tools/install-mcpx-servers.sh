@@ -84,7 +84,7 @@ fi
 
 # --- fff-nix index target: persistent clone of Drew's nix config ---
 if [ ! -d "$HOME/git/nix/.git" ]; then
-  timeout 300 git clone --quiet https://github.com/dezren39/nix.git "$HOME/git/nix"
+  timeout 300 git clone --quiet https://github.com/dezren39/darwin-nix.git "$HOME/git/nix"
 fi
 
 echo "mcpx servers installed (codebase-memory-mcp $CBM_VER, gopls $GOPLS_VER). Restart the daemon: systemctl restart mcpx"

@@ -34,9 +34,9 @@ REPOS = [
     "developing-today/code",
     "developing-today/opencode",
     "developing-today/openchamber",
-    "dezren39/nix",
+    "dezren39/darwin-nix",
 ]
-NIX_REPO = "dezren39/nix"
+NIX_REPO = "dezren39/darwin-nix"
 UPSTREAM_WATERMARK_KEY = "upstream:nixpkgs-unstable"
 CAP = 100
 
