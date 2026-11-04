@@ -1,6 +1,6 @@
 #!/bin/bash
 set -u
-OUT=$(repo-queue claim --queue repo-health-code-pilot --worker repo-worker-code --lane code-g --lease-seconds 2700)
+OUT=$(fleet queue claim --queue repo-health-code-pilot --worker repo-worker-code --lane code-g --lease-seconds 2700)
 echo "$OUT" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
