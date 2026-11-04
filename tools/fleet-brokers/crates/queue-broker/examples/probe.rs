@@ -20,8 +20,8 @@ fn main() {
         .trim()
         .to_string();
     let t = Instant::now();
-    let key = get_secret(&agent, &stok, "supabase.service-role-key");
-    let url = get_secret(&agent, &stok, "supabase.project-url");
+    let key = get_secret(&agent, &stok, "supabase.muse-dev2.service-role-key");
+    let url = get_secret(&agent, &stok, "supabase.muse-dev2.project-url");
     println!("creds in {:?} (key len {})", t.elapsed(), key.len());
     let base = url.trim_end_matches('/');
     let path = "tasks?select=id,created_at&queue=eq.repo-health-code-pilot&status=eq.queued&order=created_at.asc&limit=1";

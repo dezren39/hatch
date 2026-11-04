@@ -3,8 +3,9 @@
 
 Usage: supabase-exec.py <sql-file> [project-ref]
 
-The project ref defaults to the Bitwarden secret `supabase.project-ref`
-(the canonical pointer — muse-dev2 since the 2026-10-30 cutover), so a
+The project ref defaults to the Bitwarden secret
+`supabase.muse-dev2.project-ref` (the canonical pointer for muse-dev2,
+the fleet's Supabase project since the 2026-10-30 cutover), so a
 future project move is a Bitwarden change, not a code change. Pass the
 ref explicitly to target another project (its scoped token must then be
 used too — the canonical token is scoped to the canonical project).
@@ -23,7 +24,7 @@ import urllib.request
 BWS = os.path.expanduser("~/tools/bin/bws")
 TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
 SECRET_KEY = "supabase.access-token-muse-cli"
-REF_KEY = "supabase.project-ref"
+REF_KEY = "supabase.muse-dev2.project-ref"
 
 
 def bws_env():

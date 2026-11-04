@@ -84,7 +84,7 @@ impl State {
         // vault load; retry 503s for up to ~60 s.
         let mut last_err = None;
         for _ in 0..20 {
-            match (get_secret("supabase.service-role-key"), get_secret("supabase.project-url")) {
+            match (get_secret("supabase.muse-dev2.service-role-key"), get_secret("supabase.muse-dev2.project-url")) {
                 (Ok(key), Ok(url)) => {
                     let creds = Creds {
                         key,
