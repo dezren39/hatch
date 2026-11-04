@@ -264,3 +264,4 @@ workspace/supabase/muse-dev/migrations/0018_home_domain.sql
 /.fleet-build-locks/
 /.timetrap.db
 /wf-surgery/
+tools/laptop-agent-token
