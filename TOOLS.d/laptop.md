@@ -115,3 +115,19 @@
   pgrep/socket gate, flock-serialized spawn, and the broker self-dedupes
   via its socket probe. No-op when already running (verified: pid
   stable across ensures; a killed broker came back on the next ensure).
+
+## repo-queue on the laptop (claimant transport, 2026-11-04, code#5414)
+- The opencode-claimant and its worker sessions run ON the laptop, where
+  there is no session proxy. The `repo-queue` client therefore has a
+  direct-broker transport: `REPO_QUEUE_BROKER_URL` env or
+  `~/.config/repo-queue/broker-url` (laptop value
+  `http://100.99.113.103:4801`) makes it POST straight to the
+  queue-broker with `X-Agent-Token` from `REPO_QUEUE_TOKEN_FILE` or
+  `~/.config/queue-broker/token`. Sandbox behavior is unchanged when
+  neither is set. Laptop binary: `~/fleet-brokers/bin/repo-queue`
+  (also symlinked from `~/.local/bin/repo-queue`).
+- queue-broker `/list` accepts `rich: true` for the claim/binding
+  fields (worker_id, lease_until, lane_id, attempts, max_attempts,
+  progress) — that is how the claimant's poll.py reads the ledger now.
+  It no longer imports any Python helper; when a fleet call-site sweep
+  retires a tool, grep the code repo's pm-stack for consumers too.
