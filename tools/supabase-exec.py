@@ -11,7 +11,7 @@ ref explicitly to target another project (its scoped token must then be
 used too — the canonical token is scoped to the canonical project).
 
 Auth: reads the Bitwarden Secrets Manager access token from
-~/.config/bitwarden/access-token, fetches `supabase.access-token-muse-cli`
+~/.config/bitwarden/access-token, fetches `supabase.muse-dev2.access-token-muse-cli`
 (the sbp_ management token) from project "developing today", and uses it as
 a Bearer token. No secret is ever printed. Output is the JSON result rows.
 """
@@ -23,7 +23,7 @@ import urllib.request
 
 BWS = os.path.expanduser("~/tools/bin/bws")
 TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
-SECRET_KEY = "supabase.access-token-muse-cli"
+SECRET_KEY = "supabase.muse-dev2.access-token-muse-cli"
 REF_KEY = "supabase.muse-dev2.project-ref"
 
 
