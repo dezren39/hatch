@@ -277,6 +277,20 @@ if [ -x "$RS_DIR/install-sampler-units.sh" ]; then
   fi
 fi
 
+# --- sysstat collector: reinstall package + systemd unit if missing ---
+# Same pattern as above; the unit + installer live in hatch-personal
+# (scripts/sysstat). sadc samples every 2 min to ~/logs/sysstat (the
+# distro's own /var/log/sysstat does not survive recycles). Complements
+# the resource sampler with CPU split, disk and network stats (Drew,
+# 2026-11-04). The apt reinstall can take a few minutes, hence 600s.
+SS_DIR=/home/hatch/hatch-personal/scripts/sysstat
+if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
+  if ! systemctl is-active --quiet sysstat-collector.service 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sysstat collector" >> "$LOG"
+    timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 # --- Hatch-personal autocommit: reinstall systemd units if missing ---
 # Same pattern as above; the units + installer live in hatch-personal
 # (scripts/hatch-autocommit). Every-minute commit+push of everything

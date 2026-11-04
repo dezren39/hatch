@@ -265,3 +265,5 @@ workspace/supabase/muse-dev/migrations/0018_home_domain.sql
 /.timetrap.db
 /wf-surgery/
 tools/laptop-agent-token
+tools/queue-broker-token
+tools/secrets-broker-token

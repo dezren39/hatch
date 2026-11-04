@@ -11,8 +11,15 @@ ControlMaster/ControlPersist pattern. The client auto-starts it when the
 socket is missing; it exits after an idle hour.
 
 Protocol (length-prefixed JSON both ways):
-  request  {"method", "path", "body"}
+  request  {"method", "path", "body", "port"?, "token_file"?}
   response {"status", "body"}
+
+`port` (default 4799, the laptop-agent) selects the laptop service —
+the session proxy is the single entry point for all of them
+(queue-broker on 4801, secrets-broker on 4800; code#5362). `token_file`
+names the file whose contents are sent as X-Agent-Token for that
+service (read per request, never stored); without it the laptop-agent
+token is used. Pools are kept per port.
 """
 import http.client
 import importlib.util
@@ -37,23 +44,23 @@ POOL_SIZE = int(os.environ.get("LAPTOP_AGENT_POOL", "12"))
 IDLE_EXIT_S = 3600
 KEEPALIVE_S = 180
 
-_pool = []
+_pools = {}
 _pool_lock = threading.Lock()
 _last_used = time.time()       # client requests only; keepalive must not
                                # reset this or the idle exit never fires
 
 
-def open_conn():
-    conn = http.client.HTTPConnection(la.TARGET_HOST, la.TARGET_PORT,
-                                      timeout=660)
-    conn.sock = la.tunnel_socket()
+def open_conn(port=4799):
+    conn = http.client.HTTPConnection(la.TARGET_HOST, port, timeout=660)
+    conn.sock = la.tunnel_socket(port)
     return conn
 
 
-def pool_put(conn):
+def pool_put(port, conn):
     with _pool_lock:
-        if len(_pool) < POOL_SIZE:
-            _pool.append(conn)
+        pool = _pools.setdefault(port, [])
+        if len(pool) < POOL_SIZE:
+            pool.append(conn)
             return
     try:
         conn.close()
@@ -61,24 +68,28 @@ def pool_put(conn):
         pass
 
 
-def pool_get():
+def pool_get(port):
     with _pool_lock:
-        if _pool:
-            return _pool.pop()
-    return open_conn()
+        pool = _pools.get(port) or []
+        if pool:
+            return pool.pop()
+    return open_conn(port)
 
 
-def do_request(method, path, body, client=True):
+def do_request(method, path, body, port=4799, token_file=None, client=True):
     """One request on a pooled warm connection; one retry on a fresh
     connection if the pooled one went stale."""
     global _last_used
     if client:
         _last_used = time.time()
-    token = la.TOKEN_FILE.read_text().strip()
+    if token_file:
+        token = Path(token_file).read_text().strip()
+    else:
+        token = la.TOKEN_FILE.read_text().strip()
     payload = json.dumps(body) if body is not None else None
     last_err = None
     for attempt in (1, 2):
-        conn = pool_get() if attempt == 1 else open_conn()
+        conn = pool_get(port) if attempt == 1 else open_conn(port)
         try:
             conn.request(method, path, body=payload, headers={
                 "X-Agent-Token": token,
@@ -86,7 +97,7 @@ def do_request(method, path, body, client=True):
             })
             resp = conn.getresponse()
             data = resp.read()
-            pool_put(conn)
+            pool_put(port, conn)
             return resp.status, json.loads(data or b"{}")
         except Exception as e:
             last_err = e
@@ -100,7 +111,7 @@ def do_request(method, path, body, client=True):
 def preconnect():
     for _ in range(POOL_SIZE):
         try:
-            pool_put(open_conn())
+            pool_put(4799, open_conn(4799))
         except Exception:
             pass
 
@@ -145,8 +156,10 @@ class Handler(socketserver.BaseRequestHandler):
             if req is None:
                 return
             try:
-                status, body = do_request(req["method"], req["path"],
-                                          req.get("body"))
+                status, body = do_request(
+                    req["method"], req["path"], req.get("body"),
+                    port=int(req.get("port", 4799)),
+                    token_file=req.get("token_file"))
                 write_msg(self.request, {"status": status, "body": body})
             except Exception as e:
                 write_msg(self.request, {

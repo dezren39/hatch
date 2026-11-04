@@ -35,9 +35,10 @@ TOKEN_FILE = Path.home() / "tools/laptop-agent-token"
 OFFSET_DIR = Path.home() / ".cache/laptop-agent"
 
 
-def tunnel_socket():
+def tunnel_socket(port=None):
     import base64
     import urllib.parse
+    port = port or TARGET_PORT
     raw = os.environ.get("HTTPS_PROXY")
     if not raw:
         sys.exit("laptop-agent: HTTPS_PROXY must be set")
@@ -46,8 +47,8 @@ def tunnel_socket():
     pw = urllib.parse.unquote(u.password or "")
     sock = socket.create_connection((u.hostname, PROXY_PORT), timeout=60)
     auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
-    req = (f"CONNECT {TARGET_HOST}:{TARGET_PORT} HTTP/1.1\r\n"
-           f"Host: {TARGET_HOST}:{TARGET_PORT}\r\n"
+    req = (f"CONNECT {TARGET_HOST}:{port} HTTP/1.1\r\n"
+           f"Host: {TARGET_HOST}:{port}\r\n"
            f"Proxy-Authorization: Basic {auth}\r\n"
            f"Proxy-Connection: Keep-Alive\r\n\r\n")
     sock.sendall(req.encode())
