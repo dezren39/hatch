@@ -75,19 +75,19 @@
     first, then add — and the element NAME is what `nix profile list` prints
     (e.g. `tools/dispatcher/omnibin`), NOT the package name; `remove mcpx`
     matches nothing and errors, leaving the stale add a no-op.
-    (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #269; again for #271.)
+    (Hit 2026-09-30 rebuilding mcpx for dezren39/darwin-nix #269; again for #271.)
   - ALWAYS pass the attr on the add: `nix profile add .#mcpx`, NEVER bare `nix
     profile add .` — a bare add installs the flake's DEFAULT package
     (here: omnibin), silently replacing the mcpx element with a same-named
     omnibin one and leaving /usr/local/bin/mcpx dangling. (Hit 2026-09-30
-    rebuilding mcpx for dezren39/nix #289.)
+    rebuilding mcpx for dezren39/darwin-nix #289.)
   - NEVER pass a SYMLINK as `--profile`: `nix profile add . --profile
     "$HOME/.nix-profile"` makes nix create sibling generations
     (`.nix-profile-1-link*` in the same dir) instead of mutating the profile
     the symlink points to — you end up with TWO profiles, the canonical one
     untouched and a stray chain doing the real work. Recover by deleting the
     stray chain, re-pointing the symlink at the canonical profile, and
-    re-adding. (Hit 2026-09-30 rebuilding mcpx for dezren39/nix #289.)
+    re-adding. (Hit 2026-09-30 rebuilding mcpx for dezren39/darwin-nix #289.)
   - `nix profile` default profile: uses `~/.nix-profile` when it exists; when it
     does NOT exist, nix operates on /nix/var/nix/profiles/default (→
     per-user/root/profile) and creates `~/.nix-profile` as a symlink to it.
@@ -117,7 +117,7 @@
     derivations, prefer `env.CGO_ENABLED = "0"` (nixpkgs honors args.env over
     go.CGO_ENABLED) so no C toolchain is needed at all; makeCWrapper's
     postInstall wrapProgram still compiles a C wrapper, which is where the
-    purity flag becomes necessary. Upstreamed to dezren39/nix as PR #194.
+    purity flag becomes necessary. Upstreamed to dezren39/darwin-nix as PR #194.
   - **Sandbox build dir is NOT /build here** (found 2026-10-01 via probe
     derivation): builds run under
     `/home/hatch/nix-persist/var/nix/builds/nix-<pid>-<id>` — INSIDE
