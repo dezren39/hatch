@@ -33,7 +33,7 @@ spec.loader.exec_module(la)
 
 SOCK_DIR = Path.home() / ".cache/laptop-agent"
 SOCK_PATH = SOCK_DIR / "broker.sock"
-POOL_SIZE = int(os.environ.get("LAPTOP_AGENT_POOL", "6"))
+POOL_SIZE = int(os.environ.get("LAPTOP_AGENT_POOL", "12"))
 IDLE_EXIT_S = 3600
 KEEPALIVE_S = 180
 

@@ -16,16 +16,17 @@ Usage:
   laptop-agent.py kill JOB
   laptop-agent.py jobs
 """
-import argparse
-import base64
-import http.client
 import json
 import os
 import socket
 import sys
 import time
-import urllib.parse
 from pathlib import Path
+
+# NOTE: http.client / base64 / urllib.parse / argparse are imported lazily
+# inside the direct-CONNECT path and main(). The broker fast path (the
+# fleet default) needs only the modules above — at dozens of concurrent
+# sessions, per-call interpreter+import cost is the sandbox footprint.
 
 TARGET_HOST = "100.99.113.103"
 TARGET_PORT = 4799
@@ -35,6 +36,8 @@ OFFSET_DIR = Path.home() / ".cache/laptop-agent"
 
 
 def tunnel_socket():
+    import base64
+    import urllib.parse
     raw = os.environ.get("HTTPS_PROXY")
     if not raw:
         sys.exit("laptop-agent: HTTPS_PROXY must be set")
@@ -61,9 +64,13 @@ def tunnel_socket():
     return sock
 
 
-class TunnelHTTP(http.client.HTTPConnection):
-    def connect(self):
-        self.sock = tunnel_socket()
+def make_tunnel_http():
+    import http.client
+
+    class TunnelHTTP(http.client.HTTPConnection):
+        def connect(self):
+            self.sock = tunnel_socket()
+    return TunnelHTTP
 
 
 BROKER_SOCK = OFFSET_DIR / "broker.sock"
@@ -126,7 +133,7 @@ def request(method, path, body=None):
                          f"{obj.get('error', obj)}")
             return obj
     token = TOKEN_FILE.read_text().strip()
-    conn = TunnelHTTP(TARGET_HOST, TARGET_PORT, timeout=660)
+    conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT, timeout=660)
     payload = json.dumps(body) if body is not None else None
     conn.request(method, path, body=payload, headers={
         "X-Agent-Token": token,
@@ -182,6 +189,7 @@ def main():
         return
 
     if sub in ("exec", "run"):
+        import argparse
         opt_args, cmd_args = split_cmd(rest)
         ap = argparse.ArgumentParser()
         ap.add_argument("--cwd", default=None)
