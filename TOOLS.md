@@ -21,8 +21,9 @@ one-liners.
   `nix profile add .` and never a symlink as `--profile`. Detail: TOOLS.d/nix.md
 - omnibin: `nix run github:fzakaria/omnibin` (with the taint-shim preload);
   `which` queries need no FUSE. Detail: TOOLS.d/nix.md
-- Secrets: Bitwarden Secrets Manager via `~/tools/bws-env.sh` (bws at
-  ~/tools/bin/bws); 1Password via `source ~/tools/op-env.sh`. Values are
+- Secrets: `fleet secrets get <name>` is the default route (broker-first,
+  Bitwarden fallback inside the verb); direct Bitwarden via `~/tools/bws-env.sh`
+  is emergency-only; 1Password via `source ~/tools/op-env.sh`. Values are
   referenced by name only, never written to files. Detail: TOOLS.d/secrets.md
 - Tool output in this environment has been FABRICATED before — verify
   consequential facts with a second independent call. The read tool can also

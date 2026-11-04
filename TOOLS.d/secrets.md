@@ -1,6 +1,22 @@
 # TOOLS.d/secrets.md — split verbatim from TOOLS.md 2026-10-25 (token review #2)
 
-## Bitwarden Secrets Manager CLI (bws 2.1.0, set up 2026-10-07)
+## DEFAULT ROUTE — `fleet secrets` (Drew's order, 2026-11-04; this is the canonical statement)
+
+**Agents obtain secrets with `fleet secrets get <name>` — that is the primary and
+default route, fleet-wide.** It works from the sandbox (via the local session
+proxy to the laptop's secrets-broker) and on the laptop directly.
+`fleet secrets list` lists the broker's secret names. The verb resolves
+broker-first and **falls back to Bitwarden internally** — callers do NOT
+implement their own fallback, and do NOT reach for `bws` first.
+Values are referenced by name only and never written to files, commits, or logs.
+
+**Emergency only:** direct Bitwarden via `source ~/tools/bws-env.sh` + `bws`
+(the section below) is for when the `fleet` verb itself is unavailable or
+broken — not a routine alternative. 1Password (`source ~/tools/op-env.sh`,
+further below) is unchanged: it serves its own purposes (sudo password,
+mirrored LOGIN items), not the general secret-fetch route.
+
+## Bitwarden Secrets Manager CLI (bws 2.1.0, set up 2026-10-07) — EMERGENCY FALLBACK ONLY (see above)
 - Binary: `~/tools/bin/bws` (on PATH). Installed from
   `github.com/bitwarden/sdk-sm` release `bws-v2.1.0`
   (`bws-x86_64-unknown-linux-gnu-2.1.0.zip`).
@@ -94,7 +110,7 @@
 - Verified 2026-10-24 with museRW: `op whoami` OK, `op vault list` = Dev + Walla, item list/get in BOTH vaults OK (reads ~2s).
 - **Sandbox writes WORK — the "hang" was stdin (root-caused 2026-10-24):** `op item create` with NO field assignments blocks forever reading a template from stdin (no TTY needed to reproduce; timeouts at 25–170s, item never appears — earlier notes called this a transport hang; it is not). FIX: always pass field assignments or `--template <file>`, and add `< /dev/null`. With that, creates complete in ~2.5s from the sandbox with museRW. Verified end-to-end 2026-10-24: probe item created in Dev, read back, deleted; then the 11-item catch-up batch (dnb.my-account-password, cline.api-key, turso.general-db-token, cloudflare.webhook-gateway.github-secret, cloudflare.webhook-gateway.admin-token, cloudflare.agent-inbox-admin-token, turso.muse-meta-agent-inbox-token, rustdesk.amd-6-password, krdp.amd-6-password, commandcode.api-key, globalping.api-token) filed into Dev as LOGIN items (value in a CONCEALED password field, built via a 600 `--template` JSON so values never hit argv) and each verified with `op item get`; a sha spot-check (cline.api-key) matched Bitwarden byte-for-byte (`op item get --fields` output appends a trailing newline — trim before hashing). A laptop-side create probe also hung the same way (same stdin cause); no laptop write path is needed.
 - **REDACTED readback trap (hit 2026-10-26):** `op item get --fields password` on this build can return a redaction notice (text ending "…to reveal ]") instead of the value — hash checks then mismatch on a CORRECT item. Fix: add `--reveal`. Verify structure first with `--format json` (field lengths only), then read with `--reveal` and strip `\r\n` before hashing.
-- **DUPLICATE password-field trap (root-caused 2026-10-26):** the 11 catch-up LOGIN items built from the 600 template (incl. `rustdesk.amd-6-password`, `krdp.amd-6-password`) each carry TWO fields with id `password`: the standard one is EMPTY (len 0) and the real value sits in a second CONCEALED field. Any first-match read (`op item get --fields password`, naive jq) returns the empty string and auth fails with a misleading "wrong password". Verified 2026-10-26: the non-empty fields hash-match the Bitwarden originals exactly (len 24, sha12 846919846475 / e8f91317e3db). Rule: for these items select the non-empty CONCEALED field — or simpler, read the Bitwarden original via bws.
+- **DUPLICATE password-field trap (root-caused 2026-10-26):** the 11 catch-up LOGIN items built from the 600 template (incl. `rustdesk.amd-6-password`, `krdp.amd-6-password`) each carry TWO fields with id `password`: the standard one is EMPTY (len 0) and the real value sits in a second CONCEALED field. Any first-match read (`op item get --fields password`, naive jq) returns the empty string and auth fails with a misleading "wrong password". Verified 2026-10-26: the non-empty fields hash-match the Bitwarden originals exactly (len 24, sha12 846919846475 / e8f91317e3db). Rule: for these items select the non-empty CONCEALED field — or simpler, read the Bitwarden original via `fleet secrets get <name>`.
 
 ## 1Password via Muse's service accounts (discovered 2026-10-25)
 - bws holds `op muse service account auth token 1password` (read-only) and `op museRW service account auth token 1password` (read/write). Fetch the token value from bws, export as OP_SERVICE_ACCOUNT_TOKEN, then the `op` dispatcher CLI works — no interactive account exists or is needed. Visible vaults: Dev, Walla. The Dev vault mirrors most bws secret names (e.g. user@amd = laptop sudo login).
