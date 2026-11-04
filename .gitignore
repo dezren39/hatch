@@ -268,3 +268,20 @@ tools/laptop-agent-token
 tools/queue-broker-token
 tools/secrets-broker-token
 tools/repo-queue
+
+# review 2026-11-04: root fleet-lane scratch/output dumps (claim/audit/lane/shift
+# notes, a stray empty "{" file, the wks/ lane scratch tree), the built
+# fleet ELF + fleet-brokers Rust target dir, and rustdesk-gl evidence
+# screenshots (text source committed; PNGs are ephemeral captures)
+/claim_v.err
+/claimed_*.txt
+/parked_audit.txt
+/lane*.txt
+/shift-*.txt
+/duty4-note.md
+/{
+/wks/
+/tools/fleet
+tools/fleet-brokers/target/
+tools/rustdesk-gl/shot-*.png
+tools/rustdesk-gl/crop-*.png
