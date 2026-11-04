@@ -31,7 +31,16 @@ keeps the packet's value unchanged — the direction lives in this
 docstring and the claim/enqueue help, not in the numbers.
 
 Environment overrides:
-    REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.project-url
+    REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.project-url;
+                              an env pin must match the Bitwarden canonical
+                              value or the run dies (exit 3) — see
+                              REPO_QUEUE_ALLOW_PIN_MISMATCH
+    REPO_QUEUE_ALLOW_FALLBACK=1  opt-in: on Bitwarden project-url lookup
+                              failure, use the hardcoded PROJECT_URL with a
+                              loud stderr banner instead of dying (exit 3)
+    REPO_QUEUE_ALLOW_PIN_MISMATCH=1  opt-in: accept an env pin that
+                              disagrees with Bitwarden, with a loud stderr
+                              banner instead of dying (exit 3)
     REPO_QUEUE_DEFAULT_QUEUE  default repo-health-code-shadow (Phase 0:
                               the shadow queue; live cutover will pass
                               --queue repo-health-code-pilot explicitly)
@@ -152,38 +161,108 @@ def get_service_key():
         die(3, f"credential fetch failed: {exc}")
 
 
-def get_project_url():
-    """Canonical project URL from Bitwarden (`supabase.project-url`) so a
-    project move is a Bitwarden change, not a code change. Falls back to
-    PROJECT_URL if the lookup fails."""
+_RESOLUTION = None  # per-process cache: (url, source)
+
+
+def _bitwarden_project_url():
+    """Raw Bitwarden lookup of `supabase.project-url`. Returns the URL
+    string, or None on any failure (no token file, bws error, secret
+    absent, bad payload). Never falls back — the caller decides."""
     env = dict(os.environ)
     if "BWS_ACCESS_TOKEN" not in env:
         try:
             with open(BWS_TOKEN_FILE) as f:
                 env["BWS_ACCESS_TOKEN"] = f.read().strip()
         except OSError:
-            return PROJECT_URL
+            return None
     bws = BWS if os.path.exists(BWS) else "bws"
     try:
         out = subprocess.run([bws, "secret", "list", "-o", "json"],
                              capture_output=True, text=True, env=env,
                              timeout=60)
+        if out.returncode != 0:
+            return None
         sid = next((s["id"] for s in json.loads(out.stdout)
                     if s.get("key") == "supabase.project-url"), None)
         if sid is None:
-            return PROJECT_URL
+            return None
         got = subprocess.run([bws, "secret", "get", sid, "-o", "json"],
                              capture_output=True, text=True, env=env,
                              timeout=60)
+        if got.returncode != 0:
+            return None
         return json.loads(got.stdout)["value"]
     except (subprocess.SubprocessError, ValueError, KeyError):
+        return None
+
+
+def _fallback_url(why):
+    """The hardcoded PROJECT_URL, reachable only through the explicit
+    REPO_QUEUE_ALLOW_FALLBACK=1 opt-in, and never silently (#4903)."""
+    if os.environ.get("REPO_QUEUE_ALLOW_FALLBACK") == "1":
+        eprint("repo-queue: WARNING — Bitwarden project-url lookup failed "
+               f"({why}); REPO_QUEUE_ALLOW_FALLBACK=1 set, using hardcoded "
+               f"fallback project {PROJECT_URL}. This is the #4903 "
+               "split-brain hazard: verify this host is canonical before "
+               "trusting any result.")
         return PROJECT_URL
+    die(3, f"Bitwarden project-url lookup failed ({why}) and no fallback "
+           "is permitted: refusing to guess the Supabase project (#4903 "
+           "split-brain guard). Fix Bitwarden access, or set "
+           "REPO_QUEUE_ALLOW_FALLBACK=1 to use the hardcoded fallback "
+           f"{PROJECT_URL} with a loud warning.")
+
+
+def resolve_project():
+    """Resolve (project_url, source) once per process, loudly (#4903).
+
+    source is one of: env-pin, bitwarden, fallback. An env pin that
+    disagrees with the Bitwarden canonical value dies with exit 3
+    unless REPO_QUEUE_ALLOW_PIN_MISMATCH=1, which banners instead."""
+    global _RESOLUTION
+    if _RESOLUTION is not None:
+        return _RESOLUTION
+    pin = os.environ.get("REPO_QUEUE_SUPABASE_URL")
+    if pin:
+        pin = pin.rstrip("/")
+        canonical = _bitwarden_project_url()
+        if canonical is None:
+            canonical = _fallback_url("env pin present but canonical "
+                                       "value unverifiable")
+        canonical = canonical.rstrip("/")
+        if pin != canonical:
+            if os.environ.get("REPO_QUEUE_ALLOW_PIN_MISMATCH") == "1":
+                eprint("repo-queue: WARNING — REPO_QUEUE_SUPABASE_URL pin "
+                       f"{pin} DISAGREES with Bitwarden canonical "
+                       f"{canonical}; REPO_QUEUE_ALLOW_PIN_MISMATCH=1 set, "
+                       "proceeding with the pin. This is the #4903 "
+                       "split-brain hazard.")
+            else:
+                die(3, f"REPO_QUEUE_SUPABASE_URL pin {pin} disagrees with "
+                       f"the Bitwarden canonical project {canonical} "
+                       "(#4903 split-brain guard). Unset the pin, fix it, "
+                       "or set REPO_QUEUE_ALLOW_PIN_MISMATCH=1 to proceed "
+                       "with a loud warning.")
+        _RESOLUTION = (pin, "env-pin")
+        return _RESOLUTION
+    url = _bitwarden_project_url()
+    if url is None:
+        url = _fallback_url("no env pin")
+        _RESOLUTION = (url.rstrip("/"), "fallback")
+        return _RESOLUTION
+    _RESOLUTION = (url.rstrip("/"), "bitwarden")
+    return _RESOLUTION
+
+
+def get_project_url():
+    """Canonical project URL: Bitwarden (`supabase.project-url`) so a
+    project move is a Bitwarden change, not a code change. Since #4903
+    the lookup never falls back silently — see resolve_project()."""
+    return resolve_project()[0]
 
 
 def base_url():
-    if "REPO_QUEUE_SUPABASE_URL" in os.environ:
-        return os.environ["REPO_QUEUE_SUPABASE_URL"].rstrip("/")
-    return get_project_url().rstrip("/")
+    return resolve_project()[0]
 
 
 def http(method, path, key, body=None, extra_headers=(), want_headers=False):
@@ -967,6 +1046,9 @@ def cmd_complete(args):
 
 
 def cmd_health(args):
+    url, source = resolve_project()
+    from urllib.parse import urlparse
+    print(f"project: {urlparse(url).netloc} (resolved via {source})")
     key = get_service_key()
     path = "repo_queue_health?select=*"
     if args.queue:
