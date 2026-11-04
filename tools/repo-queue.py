@@ -6,7 +6,7 @@ Design: ~/workspace/goals/keep-the-four-repos-healthy/files/
 
 Talks to Supabase PostgREST (schema `agent`) using the service-role key,
 fetched transiently from Bitwarden Secrets Manager at runtime (item
-`supabase.service-role-key`) — the value is never printed, logged, or
+`supabase.muse-dev2.service-role-key`) — the value is never printed, logged, or
 written to disk. HTTP goes through curl subprocesses (urllib chunked
 reads are unreliable through this sandbox's egress proxy).
 
@@ -31,7 +31,7 @@ keeps the packet's value unchanged — the direction lives in this
 docstring and the claim/enqueue help, not in the numbers.
 
 Environment overrides:
-    REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.project-url;
+    REPO_QUEUE_SUPABASE_URL   default: Bitwarden supabase.muse-dev2.project-url;
                               an env pin must match the Bitwarden canonical
                               value or the run dies (exit 3) — see
                               REPO_QUEUE_ALLOW_PIN_MISMATCH
@@ -63,7 +63,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-PROJECT_URL = "https://keihfchslgjetkmnmzra.supabase.co"  # fallback only; canonical value is Bitwarden `supabase.project-url`
+PROJECT_URL = "https://keihfchslgjetkmnmzra.supabase.co"  # fallback only; canonical value is Bitwarden `supabase.muse-dev2.project-url`
 DEFAULT_QUEUE = "repo-health-code-shadow"
 DEFAULT_WORKER = "repo-worker-code"
 PILOT_REPO = "developing-today/code"
@@ -75,7 +75,7 @@ REPO_ALT = ("(?:developing-today/code|developing-today/opencode|"
             "developing-today/zettel|dezren39/dezren39)")
 BWS = os.path.expanduser("~/tools/bin/bws")
 BWS_TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
-SECRET_NAME = "supabase.service-role-key"
+SECRET_NAME = "supabase.muse-dev2.service-role-key"
 GOAL_DIR = os.path.expanduser(
     "~/workspace/goals/keep-the-four-repos-healthy/hidden_files")
 DEFAULT_SIGNAL_PATH = os.path.join(GOAL_DIR, "repo-queue-signal.json")
@@ -165,7 +165,7 @@ _RESOLUTION = None  # per-process cache: (url, source)
 
 
 def _bitwarden_project_url():
-    """Raw Bitwarden lookup of `supabase.project-url`. Returns the URL
+    """Raw Bitwarden lookup of `supabase.muse-dev2.project-url`. Returns the URL
     string, or None on any failure (no token file, bws error, secret
     absent, bad payload). Never falls back — the caller decides."""
     env = dict(os.environ)
@@ -183,7 +183,7 @@ def _bitwarden_project_url():
         if out.returncode != 0:
             return None
         sid = next((s["id"] for s in json.loads(out.stdout)
-                    if s.get("key") == "supabase.project-url"), None)
+                    if s.get("key") == "supabase.muse-dev2.project-url"), None)
         if sid is None:
             return None
         got = subprocess.run([bws, "secret", "get", sid, "-o", "json"],
@@ -255,7 +255,7 @@ def resolve_project():
 
 
 def get_project_url():
-    """Canonical project URL: Bitwarden (`supabase.project-url`) so a
+    """Canonical project URL: Bitwarden (`supabase.muse-dev2.project-url`) so a
     project move is a Bitwarden change, not a code change. Since #4903
     the lookup never falls back silently — see resolve_project()."""
     return resolve_project()[0]
