@@ -46,7 +46,12 @@ fi
     exec 9>"/home/hatch/.cache/laptop-agent/.broker-ensure.lock"
     if flock -n 9; then
       if [ -x /home/hatch/tools/fleet ]; then
-        setsid nohup /home/hatch/tools/fleet proxy serve \
+        # LAPTOP_AGENT_POOL=50: the proxy pool sized for the fleet's
+        # work (code#5412 concurrency benchmark — the default of 12
+        # cliffs at ~12 concurrent consumers). The compiled default
+        # becomes 50 with the fleet-proxy pool fix; this env is the
+        # explicit override at the broker's owning launch surface.
+        setsid nohup env LAPTOP_AGENT_POOL=50 /home/hatch/tools/fleet proxy serve \
           >>"$BROKER_LOG" 2>&1 </dev/null &
       else
         setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
