@@ -45,3 +45,27 @@
   the sudo -S / password-feed workaround is obsolete.
 - Old version kept at ~/tools/laptop-ssh.sh.bak-2026-10-26.
 - Verified 2026-10-26: fresh strict connection OK, helper OK, stdin OK.
+
+## laptop-agent (BUILT 2026-11-04, code issue #5343) — resident daemon, no SSH in data path
+- Drew directed ("design it and then build it") after the CPU analysis showed the
+  CONNECT relay at 0% CPU and per-command process-spawn volume as the real cost.
+  Design doc: workspace/goals/keep-the-four-repos-healthy/files/laptop-agent-design-2026-11-04.md
+- PROVEN transport fact: the tailnet tunnel proxy CONNECTs to ARBITRARY ports on
+  100.99.113.103, not just :22 — plain HTTP flows over the CONNECT tunnel.
+- Daemon: ~/laptop-agent/laptop_agent.py on the laptop (canonical copy
+  ~/tools/laptop-agent-daemon.py, committed in the home repo), systemd USER
+  service laptop-agent.service (enabled, Linger=yes, Restart=on-failure),
+  binds ONLY 100.99.113.103:4799, token auth via X-Agent-Token (token files
+  mode 600: laptop ~/.config/laptop-agent/token, sandbox ~/tools/laptop-agent-token
+  — gitignored, never commit/print). Job spools: ~/.local/state/laptop-agent/jobs/.
+- Client: ~/tools/laptop-agent.py — health | exec [--cwd D] [--timeout S] [--shell] -- cmd...
+  | exec-batch FILE.json | run | poll JOB [--wait S] (offset state in
+  ~/.cache/laptop-agent/) | kill JOB | jobs. NOTE: --cwd is a LAPTOP path —
+  shell tilde expansion on the sandbox will silently rewrite ~/... to the
+  sandbox home; pass absolute /home/user/... paths.
+- Measured: batch of 10 commands in one request 1.96s wall vs 4.38s as 10 warm-mux
+  ssh calls; single trivial command ~1.3s (fresh CONNECT) vs ~0.4s warm ssh —
+  use the agent for BATCHES and LONG JOBS (detached, survive client death,
+  offset polling, exit codes propagate), keep laptop-ssh.sh for single quick
+  commands, interactive work, and sudo. Phase 2 (migrate fleet call sites) and
+  phase 3 (declare in dezren39/nix NixOS config) are open on #5343.
