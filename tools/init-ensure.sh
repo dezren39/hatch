@@ -29,6 +29,26 @@ if [ -f "$STATUS" ]; then
   fi
 fi
 
+# --- Session proxy (laptop-agent broker) autostart (2026-11-04, #5343) ---
+# Every prelude keeps the sandbox session proxy running: it is the single
+# entry point to the laptop (laptop-agent, secrets broker, queue broker).
+# No-op when a broker is already running — the pgrep gate skips the spawn,
+# and the broker itself probes its socket and exits quietly if a live one
+# owns it. Best-effort: never prints, never changes the exit contract.
+{
+  BROKER_SOCK=/home/hatch/.cache/laptop-agent/broker.sock
+  BROKER_LOG=/home/hatch/.cache/laptop-agent/broker.log
+  if [ ! -S "$BROKER_SOCK" ] || ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1; then
+    mkdir -p /home/hatch/.cache/laptop-agent
+    exec 9>"/home/hatch/.cache/laptop-agent/.broker-ensure.lock"
+    if flock -n 9; then
+      setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
+        >>"$BROKER_LOG" 2>&1 </dev/null &
+    fi
+    exec 9>&-
+  fi
+} 2>/dev/null || true
+
 # --- Warm check: marker matches this boot AND backstop timer installed ---
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ] \

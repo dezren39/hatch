@@ -94,14 +94,22 @@
   `~/tools/queue-broker-token`, `~/tools/secrets-broker-token` (600,
   gitignored); laptop `~/.config/queue-broker/token`,
   `~/.config/secrets-broker/token`.
-- `~/tools/repo-queue.py` is a shim: execs the Rust client, falls back
-  to `~/tools/repo_queue_legacy.py` only on exit 3 (broker path
-  unavailable) or `REPO_QUEUE_VIA_BROKER=0`; it re-exports the legacy
-  module's names for importers. Verified live 2026-11-04: health
-  ~3s via broker vs ~9-10s legacy; shadow-queue canary tasks 9343/9344
-  ran enqueue/claim/checkpoint/park/cancel/complete through the broker.
+- The client is called directly as `repo-queue` (binary at
+  `~/tools/repo-queue`, symlinked from `~/tools/bin/repo-queue` so it
+  is on PATH). There is NO Python repo-queue on the sandbox anymore:
+  the shim and the legacy module were removed 2026-11-04 (Drew's
+  order); every cron body, instruction file, and helper script calls
+  the bare binary, which connects through the session proxy on its
+  own. Verified live 2026-11-04: bare `repo-queue health` ~0.3-3s;
+  shadow-queue canary tasks 9343/9344 ran
+  enqueue/claim/checkpoint/park/cancel/complete through the broker.
 - Sources: sandbox `~/tools/fleet-brokers/` (Cargo workspace:
   secrets-broker, queue-broker, repo-queue); laptop build tree
   `~/fleet-brokers-src/`, binaries `~/fleet-brokers/bin/`. Nix package:
   `pkgs/fleet-brokers` in dezren39/nix (build-verified; module not yet
   enabled in any machine config — the hand-installed units are live).
+- Init autostarts the session proxy (2026-11-04): `~/tools/init-ensure.sh`
+  ensures the laptop-agent broker is running on every prelude — cheap
+  pgrep/socket gate, flock-serialized spawn, and the broker self-dedupes
+  via its socket probe. No-op when already running (verified: pid
+  stable across ensures; a killed broker came back on the next ensure).
