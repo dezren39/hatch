@@ -62,6 +62,19 @@ fi
   fi
 } 2>/dev/null || true
 
+# --- fleet binary links (2026-11-04, code#5343) ---
+# ~/tools/bin/fleet is the PATH entry point for the fleet multicall
+# binary, and repo-queue is its argv0 alias. Recreate either link if it
+# has gone missing or dangling; a present, resolvable link is left
+# untouched. Best-effort: never prints, never changes the exit contract.
+{
+  for link in fleet repo-queue; do
+    if [ ! -e "/home/hatch/tools/bin/$link" ] && [ -x /home/hatch/tools/fleet ]; then
+      ln -sfn /home/hatch/tools/fleet "/home/hatch/tools/bin/$link"
+    fi
+  done
+} 2>/dev/null || true
+
 # --- Warm check: marker matches this boot AND backstop timer installed ---
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ] \

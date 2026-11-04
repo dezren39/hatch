@@ -11,7 +11,8 @@ so sessions survive transport death and are re-discoverable afterwards
 
 What it does:
   discover  Read the laptop's ~/.local/state/opencode/service-prod.json
-            over ~/tools/laptop-ssh.sh and provision {url, password}
+            over the laptop agent (~/tools/laptop-agent.py) and
+            provision {url, password}
             into a local 0600 secret file (~/tools/secrets.d/, dir 700).
             The password is never printed, never logged, never argv.
   forward   Open (or reuse) the multiplexed SSH forward to the service:
@@ -37,10 +38,10 @@ the forward first, so the one-command form is:
 Local forward port defaults to 13421 — the service's own port number
 (13420) is already held on the sandbox by an unrelated opencode wrapper
 answering with different credentials — and can be overridden with
-OC_ATTACH_LOCAL_PORT. The laptop is reached with the
-same pinned-host-key ssh options as ~/tools/laptop-ssh.sh (the helper
-cannot reuse that script for the forward itself: it appends its args as
-a remote command, so -N/-L flags have to be built here).
+OC_ATTACH_LOCAL_PORT. The forward is reached with the
+same pinned-host-key ssh options the retired ~/tools/laptop-ssh.sh used
+(a command helper cannot express the forward itself: it appends its
+args as a remote command, so -N/-L flags have to be built here).
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ def fetch_discovery() -> dict:
         "/'.local/state/opencode/service-prod.json').read_text())))\""
     )
     out = subprocess.run(
-        [str(HOME / "tools" / "laptop-ssh.sh"), remote],
+        [str(HOME / "tools" / "laptop-agent.py"),
+         "exec", "--shell", "--", remote],
         capture_output=True, text=True, timeout=120,
     )
     if out.returncode != 0:
@@ -138,7 +140,7 @@ def local_url() -> str:
 
 def ssh_base() -> list[str]:
     if not os.environ.get("HTTPS_PROXY"):
-        raise die("HTTPS_PROXY must be set (runtime proxy env, as laptop-ssh.sh)")
+        raise die("HTTPS_PROXY must be set (runtime proxy env, as the retired laptop-ssh.sh required)")
     return [
         "ssh",
         "-o", f"ProxyCommand=python3 {HOME}/tools/laptop-proxy-connect.py",

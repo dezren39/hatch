@@ -10,12 +10,12 @@ conductor's capacity line, replacing per-cycle model arithmetic:
   sessions, and finished sessions never count. Sessions are only
   counted here — never modified, archived, or deleted.
 
-Data sources (laptop OpenChamber, read from the laptop over ssh):
+Data sources (laptop OpenChamber, read from the laptop over the agent):
   GET /api/session?limit=1000   -> {"data": [session records]}
   GET /api/session-activity     -> {"sessions": {id: {...}}}  (cross-check)
 
 Usage:
-  session-count.py                     fetch live via ~/tools/laptop-ssh.sh
+  session-count.py                     fetch live via the laptop agent
   session-count.py --list F --activity F
                                        read payloads from files instead
   session-count.py --json              also print the machine-readable tally
@@ -37,7 +37,7 @@ import subprocess
 import sys
 
 CAP = 30
-SSH = "/home/hatch/tools/laptop-ssh.sh"
+AGENT = "/home/hatch/tools/laptop-agent.py"
 BASE = "http://localhost:3000"
 
 
@@ -48,9 +48,10 @@ def fetch_live():
     )
     try:
         out = subprocess.run(
-            [SSH, remote], capture_output=True, text=True, timeout=180
+            [AGENT, "exec", "--shell", "--timeout", "300", "--", remote],
+            capture_output=True, text=True, timeout=330
         )
-    except Exception as e:  # ssh itself failed to run
+    except Exception as e:  # agent client itself failed to run
         print(f"session-count: fetch failed: {e}", file=sys.stderr)
         sys.exit(3)
     if out.returncode != 0:

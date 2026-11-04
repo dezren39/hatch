@@ -85,9 +85,9 @@
 - Measured: batch of 10 commands in one request 1.96s wall vs 4.38s as 10 warm-mux
   ssh calls; single trivial command ~1.3s (fresh CONNECT) vs ~0.4s warm ssh —
   use the agent for BATCHES and LONG JOBS (detached, survive client death,
-  offset polling, exit codes propagate), keep laptop-ssh.sh for single quick
-  commands, interactive work, and sudo. Phase 2 (migrate fleet call sites) and
-  phase 3 (declare in dezren39/darwin-nix NixOS config) are open on #5343.
+  offset polling, exit codes propagate). Phase 2 (migrate fleet call sites)
+  landed 2026-11-04 — see "SSH shim RETIRED" at the end of this file;
+  phase 3 (declare in dezren39/darwin-nix NixOS config) is open on #5343.
 
 ## laptop-agent broker — warm connections (2026-11-04, later)
 - Cold-call anatomy measured: Python startup ~25-80ms; CONNECT handshake ~1.8s
@@ -150,3 +150,31 @@
   progress) — that is how the claimant's poll.py reads the ledger now.
   It no longer imports any Python helper; when a fleet call-site sweep
   retires a tool, grep the code repo's pm-stack for consumers too.
+
+## SSH shim RETIRED (2026-11-04, Drew's order, code issue #5343)
+- ~/tools/laptop-ssh.sh is NO LONGER an SSH transport. It is a
+  compatibility redirect: exec-style invocations (one quoted command
+  string, or a script on stdin via 'bash -s' / 'python3 -') delegate to
+  ~/tools/laptop-agent.py over the fleet session proxy; exit codes
+  propagate; delegated calls appear in both trip logs. The earlier
+  sections of this file describing laptop-ssh.sh as the SSH route are
+  history — the agent is the route now.
+- The original SSH implementation is preserved byte-identical at
+  ~/tools/laptop-ssh-real.sh (md5 95f647590274779bcaef7ea9a66f0670). It
+  is reached ONLY via LAPTOP_SSH_REAL=1 (the daemon-down recovery path)
+  or automatically by the shim for shapes the agent cannot express:
+  ssh options/forwards (-L/-N/-t...), interactive sessions, and stdin
+  carrying DATA for the remote command (sudo -S feeds, `cat > file`
+  pushes) — the daemon has no stdin channel.
+- The fleet binary's `laptop-agent` domain is a registry stub in build
+  0.1.0 (exit 69, "lands in a later step of epic #5412"); the working
+  client of the fleet laptop-agent path is laptop-agent.py. When the
+  binary domain lands, the shim's delegate flips to it.
+- Daemon shell mode fixed the same day: it hardcoded /bin/bash, which
+  does not exist on NixOS — shell specs now resolve bash from PATH /
+  the per-user profile / the system profile. Canonical daemon copy
+  ~/tools/laptop-agent-daemon.py == laptop ~/laptop-agent/laptop_agent.py.
+- Known cosmetic difference: agent shell specs run via `bash -lc`
+  (login shell), whose profile emits a window-title escape on some
+  paths; harmless in captured output.
+- Migration inventory + residuals: workspace/goals/keep-the-four-repos-healthy/hidden_files/laptop-ssh-migration-inventory-2026-11-04.md
