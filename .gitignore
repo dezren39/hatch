@@ -285,3 +285,21 @@ tools/repo-queue
 tools/fleet-brokers/target/
 tools/rustdesk-gl/shot-*.png
 tools/rustdesk-gl/crop-*.png
+
+# review 2026-11-05: root fleet-lane scratch (ck task payloads, agent notes,
+# queue output/err dumps, ls-remote dumps, websocket probe script), fleet
+# lane scratch trees, built fleet binary backups, runtime-db-export lock
+/ck[0-9]*.json
+/note[0-9]*.md
+/done.txt
+/tasks-out.txt
+/tasks.err
+/issues-*.err
+/lsrem-*.txt
+/probe_*.py
+/lane-s-tools/
+/lane-v/
+/lanev-work/
+/scratch-lane-i/
+tools/fleet.*-bak
+tools/runtime-db-export/state.lock
