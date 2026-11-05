@@ -35,13 +35,14 @@ if [ -f "$STATUS" ]; then
 fi
 
 # --- System snapshot (cheap fields only) ---
-# The expensive telemetry — nix-persist size (du over the ~58G tree) and
-# the cache.nixos.org latency probe — is measured AFTER the restore
-# steps (see "Deferred telemetry" below). An unbounded du here stalled
-# the 2026-10-25 16:07 boot for ~40 min before any step ran, leaving
-# every proxy port dark; even bounded, telemetry has no business ahead
-# of the critical restores. Defaults are set now so the STATUS/JSONL
-# keys always exist with truthful values.
+# The cache.nixos.org latency probe is measured AFTER the restore steps
+# (see "Deferred telemetry" below). The nix-persist size (du over the
+# ~58G tree) is not measured by init at all: an unbounded du here stalled
+# the 2026-10-25 16:07 boot for ~40 min before any step ran, and Drew
+# ruled 2026-11-05 (code#5701) to drop even the detached replacement —
+# disk usage is covered by the code#5925 telemetry rollup instead.
+# Defaults are set now so the STATUS/JSONL keys always exist with
+# truthful values.
 KERNEL=$(uname -r 2>/dev/null || echo unknown)
 OS_VER=$(grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d'"' -f2 || echo unknown)
 CPU_COUNT=$(nproc 2>/dev/null || echo unknown)
@@ -123,7 +124,7 @@ fi
   echo "[$START_DT] init: START boot_id=$BOOT_ID boot_time='$BOOT_TIME'"
   echo "[$START_DT] init: prev_boot_id=$PREV_BOOT_ID prev_end='$PREV_END'"
   echo "[$START_DT] init: sys kernel=$KERNEL os='$OS_VER' cpus=$CPU_COUNT mem=$MEM_TOTAL"
-  echo "[$START_DT] init: sys disk_home='$DISK_HOME' nix_persist=deferred net_cache_nixos_org=deferred"
+  echo "[$START_DT] init: sys disk_home='$DISK_HOME' nix_persist=unmeasured net_cache_nixos_org=deferred"
 } >> "$LOG"
 
 FAILURES=0
@@ -201,18 +202,13 @@ run_step "services-verify" 900 bash /home/hatch/tools/verify-services.sh
 # Every command bounded; the values land in STATUS/JSONL under the
 # same keys as always (nix_persist_size, net_cache, quota, ...). See
 # the snapshot comment near the top for why this no longer runs first.
-# nix-persist size: du over the ~58G tree no longer finishes inside any
-# sane budget — measured 2026-11-04 (WS-C): `timeout 60 du -sh` produced
-# NO output in 7/7 runs on boot 6989413c, so ~60s of every ~75s init
-# bought the literal string "unknown" (and 138 "unknown" results in the
-# log history). The value is telemetry only — nothing gates on it — so
-# measure it DETACHED into a cache file and report the last completed
-# measurement. Same pattern as the sysstat apt-lock defer above.
-NIX_SIZE_FILE=$LOG_DIR/.nix-persist-size
-NIX_SIZE=""
-[ -f "$NIX_SIZE_FILE" ] && NIX_SIZE=$(cat "$NIX_SIZE_FILE" 2>/dev/null)
-[ -n "$NIX_SIZE" ] || NIX_SIZE=unknown
-setsid nohup bash -c 'sz=$(du -sh /home/hatch/nix-persist 2>/dev/null | cut -f1); if [ -n "$sz" ]; then printf "%s" "$sz" > /home/hatch/logs/.nix-persist-size.tmp && mv /home/hatch/logs/.nix-persist-size.tmp /home/hatch/logs/.nix-persist-size; fi' </dev/null >/dev/null 2>&1 &
+# nix-persist size: NOT measured here anymore (Drew ruling 2026-11-05,
+# code#5701). The detached cache-file measurement that replaced the
+# in-init du was dropped entirely: the value read "unknown" 138 times,
+# nothing consumed the cache file, and the code#5925 telemetry rollup
+# covers disk usage via the cache-writer pattern. NIX_SIZE keeps its
+# truthful "unknown" default from the snapshot block above, so the
+# nix_persist_size key still lands in STATUS/JSONL.
 if timeout 10 curl -sI https://cache.nixos.org/ 2>/dev/null | head -1 | grep -q "200"; then
   NET_OK="yes"
   # 3 latency samples in PARALLEL (was sequential: wall time was the SUM
