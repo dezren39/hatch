@@ -381,6 +381,22 @@ if [ -x "$SH_DIR/install-backup-units.sh" ]; then
   fi
 fi
 
+# --- Quota recorder: reinstall systemd units if missing ---
+# Same pattern as above; the units + installer live in
+# ~/tools/quota-recorder (code#6148). 5-minute Muse subscription
+# quota snapshots, file-first with Supabase landing. Until this block
+# existed, every recycle silently dropped the recorder — its absence
+# produced no init failure signal at all — until a job noticed and
+# hand-reinstalled the units. No apt/network dependency, so a genuine
+# install failure counts toward FAILURES like the other families.
+QR_DIR=/home/hatch/tools/quota-recorder
+if [ -x "$QR_DIR/install.sh" ]; then
+  if ! systemctl is-active --quiet quota-recorder.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring quota-recorder timer" >> "$LOG"
+    timeout 120 "$QR_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
