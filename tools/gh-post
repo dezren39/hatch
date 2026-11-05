@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""gh-post — rate-limit-proof GitHub posting for fleet writes that matter.
+
+Drew's rule (2026-11-05, AGENTS.md): WHEN GITHUB RATE-LIMITS A POST, USE THE
+OUTBOX / THE GITHUB APP. Origin failure: the code#1258 Q3/Q6 ruling comment
+failed to post twice on the gh secondary rate limit (2026-11-03) and sat in a
+prepared file for two days. Design + proofs: developing-today/code#6129.
+
+The ladder (first success wins):
+  1. USER  — `gh` as dezren39, verified by readback of the posted object.
+  2. APP   — the developing.today GitHub App (App ID 5454422) via
+             infra/fleet-paperwork/fleet_paperwork.py on the laptop. An
+             installation token is a different actor with its own rate-limit
+             bucket. fleet-paperwork verifies by readback itself. Only
+             attempted when leg 1 failed with a rate-limit-class error.
+  3. OUTBOX — a fully prepared entry in the fleet action outbox
+             (~/workspace/goals/keep-the-four-repos-healthy/hidden_files/
+             action-outbox.md, protocol of 2026-10-28). The
+             action-outbox-processor cron (30m) is the pusher: it executes
+             the entry exactly as prepared, verifies, and records the URL.
+             gh-post prints "QUEUED OB-<date>-<nnn>" and exits 3 — queued is
+             a result, never a silent file.
+
+Non-rate-limit failures (bad target, missing file, auth) fail loudly at the
+leg where they occur; they never fall through to the App or the outbox.
+
+Usage:
+  gh-post comment --repo owner/name (--issue N | --pr N) --body-file F
+  gh-post create  --repo owner/name --title T --body-file F [--label L ...]
+
+Test hooks (env): GH_POST_SKIP_USER=1 skips leg 1 as if rate-limited;
+GH_POST_SKIP_APP=1 skips leg 2 as if it failed. Both together drive the
+outbox leg end-to-end.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+GOAL_DIR = Path.home() / "workspace/goals/keep-the-four-repos-healthy"
+OUTBOX = GOAL_DIR / "hidden_files/action-outbox.md"
+HIDDEN = GOAL_DIR / "hidden_files"
+LAPTOP_SSH = str(Path.home() / "tools/laptop-ssh.sh")
+PAPERWORK = "~/git/code/infra/fleet-paperwork/fleet_paperwork.py"
+
+LIMIT_RE = re.compile(
+    r"secondary rate limit|rate limit|submitted too quickly|abuse detection",
+    re.IGNORECASE,
+)
+URL_RE = re.compile(r"https://github\.com/\S+")
+
+
+def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def die(msg: str, code: int = 1) -> "SystemExit":
+    print(f"gh-post: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def is_limit(text: str) -> bool:
+    return bool(LIMIT_RE.search(text or ""))
+
+
+def body_norm(p: Path) -> str:
+    return p.read_text().rstrip("\n")
+
+
+def find_comment_by_body(repo: str, number: int, body: str) -> str | None:
+    """Readback search: a recent comment on the target with this exact body."""
+    r = run(
+        [
+            "gh", "api", f"repos/{repo}/issues/{number}/comments",
+            "--jq", ".[-8:] | .[] | [.id, .html_url] | @tsv",
+        ]
+    )
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.strip().splitlines():
+        if not line.strip():
+            continue
+        cid, url = line.split("\t")
+        got = run(["gh", "api", f"repos/{repo}/issues/comments/{cid}", "--jq", ".body"])
+        if got.returncode == 0 and got.stdout.rstrip("\n") == body:
+            return url
+    return None
+
+
+def leg_user_comment(repo: str, number: int, pr: bool, body_file: Path) -> tuple[str, str]:
+    """Returns (outcome, detail): outcome in posted|limited|error."""
+    cmd = ["gh", "pr" if pr else "issue", "comment", str(number),
+           "--repo", repo, "--body-file", str(body_file)]
+    r = run(cmd)
+    out = (r.stdout or "") + (r.stderr or "")
+    m = URL_RE.search(r.stdout or "")
+    if r.returncode == 0 and m:
+        url = m.group(0)
+        cid = re.search(r"issuecomment-(\d+)", url)
+        if cid:
+            got = run(["gh", "api", f"repos/{repo}/issues/comments/{cid.group(1)}",
+                       "--jq", ".body"])
+            if got.returncode != 0 or got.stdout.rstrip("\n") != body_norm(body_file):
+                return ("error", f"user-leg readback mismatch for {url}")
+        print(f"posted (user): {url}")
+        return ("posted", url)
+    if is_limit(out):
+        # gh can fail after the post landed; check before falling through.
+        found = find_comment_by_body(repo, number, body_norm(body_file))
+        if found:
+            print(f"posted (user, recovered by readback): {found}")
+            return ("posted", found)
+        return ("limited", out.strip()[-300:])
+    return ("error", out.strip()[-500:] or f"gh exited {r.returncode}")
+
+
+def leg_user_create(repo: str, title: str, body_file: Path, labels: list[str]) -> tuple[str, str]:
+    cmd = ["gh", "issue", "create", "--repo", repo, "--title", title,
+           "--body-file", str(body_file)]
+    for lab in labels:
+        cmd += ["--label", lab]
+    r = run(cmd)
+    out = (r.stdout or "") + (r.stderr or "")
+    m = URL_RE.search(r.stdout or "")
+    if r.returncode == 0 and m:
+        print(f"posted (user): {m.group(0)}")
+        return ("posted", m.group(0))
+    if is_limit(out) or (r.returncode == 0 and not m):
+        # Empty-success is gh's known silent-loss mode; the App leg dedupes
+        # by exact title, so falling through cannot double-file.
+        return ("limited", out.strip()[-300:] or "gh exited 0 with no URL")
+    return ("error", out.strip()[-500:] or f"gh exited {r.returncode}")
+
+
+def laptop_paperwork(args: list[str], body_file: Path) -> tuple[bool, str]:
+    """Run fleet_paperwork on the laptop with the body file shipped over."""
+    remote_body = f"/tmp/gh-post-{os.getpid()}.md"
+    b64 = base64.b64encode(body_file.read_bytes()).decode()
+    ship = run([LAPTOP_SSH, f"echo {b64} | base64 -d > {remote_body}"])
+    if ship.returncode != 0:
+        return (False, f"body transfer to laptop failed: {ship.stderr[-200:]}")
+    remote_args = [a if a != str(body_file) else remote_body for a in args]
+    r = run([LAPTOP_SSH, "python3 " + PAPERWORK + " " + " ".join(remote_args)])
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    run([LAPTOP_SSH, f"rm -f {remote_body}"])
+    return (r.returncode == 0, out)
+
+
+def leg_app_comment(repo: str, number: int, body_file: Path) -> tuple[str, str]:
+    ok, out = laptop_paperwork(
+        ["comment", "--repo", repo, "--issue", str(number),
+         "--body-file", str(body_file)],
+        body_file,
+    )
+    if ok:
+        m = URL_RE.search(out)
+        url = m.group(0) if m else "(url in fleet-paperwork output)"
+        print(f"posted (app: developing.today[bot]): {url}")
+        return ("posted", url)
+    return ("failed", out[-400:])
+
+
+def leg_app_create(repo: str, title: str, body_file: Path, labels: list[str]) -> tuple[str, str]:
+    args = ["create", "--repo", repo, "--title", title, "--body-file", str(body_file)]
+    for lab in labels:
+        args += ["--label", lab]
+    ok, out = laptop_paperwork(args, body_file)
+    if ok:
+        m = URL_RE.search(out)
+        url = m.group(0) if m else "(url in fleet-paperwork output)"
+        print(f"posted (app: developing.today[bot]): {url}")
+        return ("posted", url)
+    return ("failed", out[-400:])
+
+
+def next_ob_id(text: str) -> str:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    n = 0
+    for m in re.finditer(rf"### OB-{today}-(\d+)", text):
+        n = max(n, int(m.group(1)))
+    while True:
+        n += 1
+        ob = f"OB-{today}-{n:03d}"
+        if f"### {ob} " not in text and f"### {ob}\n" not in text:
+            return ob
+
+
+def enqueue(kind: str, repo: str, body_file: Path, title: str | None,
+            target: str | None, labels: list[str]) -> str:
+    text = OUTBOX.read_text()
+    digest = hashlib.sha256(body_file.read_bytes()).hexdigest()[:12]
+    slug = re.sub(r"[^a-z0-9]+", "-", repo.lower()).strip("-")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stored = HIDDEN / f"gh-post-{stamp}-{slug}-{digest}.md"
+    # Dedupe: an identical prepared body already pending is the same action.
+    pending = text.split("## Done")[0]
+    for m in re.finditer(r"(?:body_file|text_file): hidden_files/(\S+)", pending):
+        cand = HIDDEN / m.group(1)
+        if cand.exists() and hashlib.sha256(cand.read_bytes()).hexdigest()[:12] == digest:
+            em = re.search(r"### (OB-\S+) ·[^\n]*\n(?:[^\n]*\n)*?- (?:body_file|text_file): hidden_files/"
+                           + re.escape(m.group(1)), pending)
+            return f"{em.group(1) if em else 'existing entry'} (dedupe: identical body already pending)"
+    stored.write_bytes(body_file.read_bytes())
+    ob = next_ob_id(text)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [f"### {ob} · {kind} · {repo}", "- status: prepared",
+             f"- prepared_by: gh-post {now}"]
+    if kind == "issue":
+        lines.append(f"- title: {title}")
+        lines.append(f"- body_file: hidden_files/{stored.name}")
+        if labels:
+            lines.append(f"- labels: {', '.join(labels)}")
+        lines.append("- agent_note: standard")
+    else:
+        lines.append(f"- target: {target}")
+        lines.append(f"- text_file: hidden_files/{stored.name}")
+    lines += ["- attempts: 0", "- last_error: -",
+              "- note: enqueued by gh-post after user + app routes failed "
+              "(rate-limit path, code#6129)", ""]
+    entry = "\n".join(lines)
+    marker = "## Done"
+    idx = text.find(marker)
+    if idx == -1:
+        die("outbox has no ## Done section marker; refusing to append blindly")
+    OUTBOX.write_text(text[:idx] + entry + text[idx:])
+    return ob
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="gh-post", description=__doc__)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    pc = sub.add_parser("comment")
+    pc.add_argument("--repo", required=True)
+    pc.add_argument("--issue", type=int)
+    pc.add_argument("--pr", type=int)
+    pc.add_argument("--body-file", required=True)
+    pi = sub.add_parser("create")
+    pi.add_argument("--repo", required=True)
+    pi.add_argument("--title", required=True)
+    pi.add_argument("--body-file", required=True)
+    pi.add_argument("--label", action="append", default=[])
+    args = ap.parse_args()
+
+    body_file = Path(args.body_file)
+    if not body_file.exists():
+        die(f"body file not found: {body_file}")
+    skip_user = os.environ.get("GH_POST_SKIP_USER") == "1"
+    skip_app = os.environ.get("GH_POST_SKIP_APP") == "1"
+
+    if args.cmd == "comment":
+        number = args.issue or args.pr
+        if not number:
+            die("comment needs --issue N or --pr N")
+        if skip_user:
+            outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
+        else:
+            outcome, detail = leg_user_comment(args.repo, number, bool(args.pr), body_file)
+        if outcome == "posted":
+            return 0
+        if outcome == "error":
+            die(f"user leg failed (not rate-limit class): {detail}")
+        print(f"gh-post: user route rate-limited; trying App route. ({detail[:120]})",
+              file=sys.stderr)
+        if skip_app:
+            outcome2, detail2 = "failed", "GH_POST_SKIP_APP test hook"
+        else:
+            outcome2, detail2 = leg_app_comment(args.repo, number, body_file)
+        if outcome2 == "posted":
+            return 0
+        print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
+              file=sys.stderr)
+        ob = enqueue("comment", args.repo, body_file, None,
+                     f"{'pr' if args.pr else 'issue'} #{number}", [])
+        print(f"QUEUED {ob}")
+        return 3
+
+    # create
+    if skip_user:
+        outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
+    else:
+        outcome, detail = leg_user_create(args.repo, args.title, body_file, args.label)
+    if outcome == "posted":
+        return 0
+    if outcome == "error":
+        die(f"user leg failed (not rate-limit class): {detail}")
+    print(f"gh-post: user route rate-limited; trying App route. ({detail[:120]})",
+          file=sys.stderr)
+    if skip_app:
+        outcome2, detail2 = "failed", "GH_POST_SKIP_APP test hook"
+    else:
+        outcome2, detail2 = leg_app_create(args.repo, args.title, body_file, args.label)
+    if outcome2 == "posted":
+        return 0
+    print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
+          file=sys.stderr)
+    ob = enqueue("issue", args.repo, body_file, args.title, None, args.label)
+    print(f"QUEUED {ob}")
+    return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())
