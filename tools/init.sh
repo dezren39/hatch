@@ -180,10 +180,9 @@ run_step "nix-profile-sync" 120 bash /home/hatch/tools/nix-profile-sync.sh
 # config). Do not re-enable.
 # run_step "commandcode-proxy-service" 180 bash /home/hatch/tools/install-commandcode-proxy-service.sh
 # run_step "claude-code-proxy-service" 180 bash /home/hatch/tools/install-claude-code-proxy-service.sh
-# DISABLED by Drew 2026-10-25 (20:52 follow-up): proxy-supervisor off —
-# its config now manages zero relays (muse/commandcode/codex all removed),
-# so the timer and its installer no longer run. Do not re-enable.
-# run_step "proxy-supervisor-service" 420 bash /home/hatch/tools/install-proxy-supervisor-service.sh
+# proxy-supervisor: removed from the boot machinery entirely (Drew
+# 2026-11-05) — the dormant code stays in tools/proxy-supervisor/ as
+# history; nothing at boot installs or checks it. See code#5974.
 run_step "bash-wrapper" 120 bash /home/hatch/tools/install-bash-wrapper.sh
 # Deferred heavy work: mcpx-servers performs unpinned network installs
 # (npm/go/gh/Chrome downloads; 119s under load on 2026-10-25) and used
