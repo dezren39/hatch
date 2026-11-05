@@ -202,14 +202,34 @@ run_step "services-verify" 900 bash /home/hatch/tools/verify-services.sh
 # Every command bounded; the values land in STATUS/JSONL under the
 # same keys as always (nix_persist_size, net_cache, quota, ...). See
 # the snapshot comment near the top for why this no longer runs first.
-NIX_SIZE=$(timeout 60 du -sh /home/hatch/nix-persist 2>/dev/null | cut -f1)
+# nix-persist size: du over the ~58G tree no longer finishes inside any
+# sane budget — measured 2026-11-04 (WS-C): `timeout 60 du -sh` produced
+# NO output in 7/7 runs on boot 6989413c, so ~60s of every ~75s init
+# bought the literal string "unknown" (and 138 "unknown" results in the
+# log history). The value is telemetry only — nothing gates on it — so
+# measure it DETACHED into a cache file and report the last completed
+# measurement. Same pattern as the sysstat apt-lock defer above.
+NIX_SIZE_FILE=$LOG_DIR/.nix-persist-size
+NIX_SIZE=""
+[ -f "$NIX_SIZE_FILE" ] && NIX_SIZE=$(cat "$NIX_SIZE_FILE" 2>/dev/null)
 [ -n "$NIX_SIZE" ] || NIX_SIZE=unknown
+setsid nohup bash -c 'sz=$(du -sh /home/hatch/nix-persist 2>/dev/null | cut -f1); if [ -n "$sz" ]; then printf "%s" "$sz" > /home/hatch/logs/.nix-persist-size.tmp && mv /home/hatch/logs/.nix-persist-size.tmp /home/hatch/logs/.nix-persist-size; fi' </dev/null >/dev/null 2>&1 &
 if timeout 10 curl -sI https://cache.nixos.org/ 2>/dev/null | head -1 | grep -q "200"; then
   NET_OK="yes"
-  # 3 quick samples for latency
-  NET_LAT=$(for i in 1 2 3; do
-    curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0"
-  done | awk '$1>0{sum+=$1;n++} END{if(n>0)printf "%.3f", sum/n; else print "null"}')
+  # 3 latency samples in PARALLEL (was sequential: wall time was the SUM
+  # of 3 round trips — with the logged per-sample average at 7.5s under
+  # boot load that was ~22s of the 97s run on 2026-11-04; parallel wall
+  # time is the MAX of the three, and the averaged value is unchanged).
+  NET_LAT=$(
+    LAT_TMP=$(mktemp -d)
+    for i in 1 2 3; do
+      ( curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0" ) > "$LAT_TMP/$i" &
+    done
+    wait
+    cat "$LAT_TMP/1" "$LAT_TMP/2" "$LAT_TMP/3" 2>/dev/null | awk '$1>0{sum+=$1;n++} END{if(n>0)printf "%.3f", sum/n; else print "null"}'
+    rm -f "$LAT_TMP/1" "$LAT_TMP/2" "$LAT_TMP/3"
+    rmdir "$LAT_TMP" 2>/dev/null
+  )
 fi
 
 # --- Post-init health snapshot ---
