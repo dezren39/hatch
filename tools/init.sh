@@ -311,13 +311,28 @@ if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
     # agent prelude, all day, in every boot. A lock collision is now a
     # DEFER: logged, not counted, and a detached retry converges the
     # collector once the lock frees. Real installer failures still count.
+    # Mirror stalls are NOT an init failure either (2026-11-05): the
+    # platform-managed ubuntu.sources lists mirror.cogentco.com as a
+    # second URI, and through this sandbox's egress that mirror
+    # intermittently accepts connections and never answers, so
+    # apt-get update can stall for many minutes per run — sometimes
+    # past the 600s budget (timeout exit 124), sometimes crawling
+    # through just under it (boot 139684af needed 5 runs / ~55 min to
+    # converge; bda69755 needed 3 runs / ~28 min). A fetch stall is
+    # the same weather as the apt lock: DEFER + detached retry, never
+    # a counted failure — counting it kept FAILURES>=1 (and the boot
+    # marker unwritten, so init-ensure re-spawned the full init on
+    # every prelude) until the mirror happened to answer.
     SS_TMP=$(mktemp)
-    if timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$SS_TMP" 2>&1; then
-      cat "$SS_TMP" >> "$LOG"
-    else
-      cat "$SS_TMP" >> "$LOG"
+    timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$SS_TMP" 2>&1
+    SS_EXIT=$?
+    cat "$SS_TMP" >> "$LOG"
+    if [ "$SS_EXIT" -ne 0 ]; then
       if grep -q "Could not get lock\|Unable to lock directory" "$SS_TMP"; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt lock held by another process — not counted as a failure; detached retry queued)" >> "$LOG"
+        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
+      elif [ "$SS_EXIT" -eq 124 ] || grep -q "Failed to fetch\|Some index files failed to download" "$SS_TMP"; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt fetch stalled or failed — mirror/network weather, exit $SS_EXIT; not counted as a failure; detached retry queued)" >> "$LOG"
         setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
       else
         FAILURES=$((FAILURES+1))
