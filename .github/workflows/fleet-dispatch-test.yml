@@ -1,0 +1,119 @@
+name: fleet-dispatch-test
+
+# Generic explicit-dispatch CI runner for `fleet dispatch-test`
+# (design: developing-today/code — dispatch-test design issue).
+# workflow_dispatch ONLY — no push/PR/schedule triggers, by policy.
+# The job payload lives in the fleet-dispatch-jobs Turso store under
+# the internal job id passed as the sole input; this workflow fetches
+# its job by id, executes the carried script, and ALWAYS writes
+# status/output back to the store, even on failure.
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "fleet dispatch-test job id"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  run-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TURSO_URL: ${{ vars.DISPATCH_TURSO_URL }}
+      TURSO_TOKEN: ${{ secrets.DISPATCH_TURSO_TOKEN }}
+      JOB_ID: ${{ inputs.job_id }}
+    steps:
+      - name: Fetch job by id and mark running
+        id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > job-output.log
+          if [ -z "${TURSO_URL}" ] || [ -z "${TURSO_TOKEN}" ]; then
+            echo "dispatch store not configured (DISPATCH_TURSO_URL var / DISPATCH_TURSO_TOKEN secret missing)" | tee -a job-output.log
+            exit 1
+          fi
+          jq -n \
+            --arg id "$JOB_ID" --argjson rid "$GITHUB_RUN_ID" \
+            --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{requests: [
+              {type: "execute", stmt: {sql: "select target_ref, script from jobs where id = ?", args: [{type: "text", value: $id}]}},
+              {type: "execute", stmt: {sql: "update jobs set status = '"'"'running'"'"', run_id = ?, run_url = ?, updated_at = strftime('"'"'%Y-%m-%dT%H:%M:%SZ'"'"', '"'"'now'"'"') where id = ?", args: [{type: "integer", value: $rid}, {type: "text", value: $url}, {type: "text", value: $id}]}},
+              {type: "close"}
+            ]}' > "$RUNNER_TEMP/pipeline.json"
+          curl -sS -X POST "$TURSO_URL/v2/pipeline" \
+            -H "Authorization: Bearer $TURSO_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/pipeline.json" > "$RUNNER_TEMP/resp.json"
+          row=$(jq -c '.results[0].response.result.rows[0] // empty' "$RUNNER_TEMP/resp.json")
+          if [ -z "$row" ]; then
+            echo "job $JOB_ID not found in dispatch store" | tee -a job-output.log
+            exit 1
+          fi
+          jq -r '.results[0].response.result.rows[0][1].value // ""' "$RUNNER_TEMP/resp.json" > "$RUNNER_TEMP/job-script.sh"
+          ref=$(jq -r '.results[0].response.result.rows[0][0].value // "HEAD"' "$RUNNER_TEMP/resp.json")
+          if [ -z "$ref" ] || [ "$ref" = "HEAD" ]; then ref="$GITHUB_REF_NAME"; fi
+          echo "checkout_ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "fetched job $JOB_ID (script $(wc -c < "$RUNNER_TEMP/job-script.sh") bytes, ref $ref)" | tee -a job-output.log
+
+      - name: Check out job ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.fetch.outputs.checkout_ref }}
+
+      - name: Execute job script
+        id: exec
+        shell: bash
+        run: |
+          set +e
+          bash "$RUNNER_TEMP/job-script.sh" 2>&1 | tee -a job-output.log
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "job script exited $code" >> job-output.log
+
+      - name: Write status and output back (always)
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          code='${{ steps.exec.outputs.code }}'
+          if [ -z "$code" ]; then
+            status="error"; ec="null"
+          elif [ "$code" = "0" ]; then
+            status="succeeded"; ec="$code"
+          else
+            status="failed"; ec="$code"
+          fi
+          tail -c 6000 job-output.log > "$RUNNER_TEMP/tail.txt" 2>/dev/null || : > "$RUNNER_TEMP/tail.txt"
+          jq -n \
+            --arg id "$JOB_ID" --arg status "$status" --argjson ec "$ec" \
+            --rawfile tail "$RUNNER_TEMP/tail.txt" \
+            '{requests: [
+              {type: "execute", stmt: {sql: "update jobs set status = ?, exit_code = ?, output_tail = ?, updated_at = strftime('"'"'%Y-%m-%dT%H:%M:%SZ'"'"', '"'"'now'"'"') where id = ?", args: [{type: "text", value: $status}, (if $ec == null then {type: "null"} else {type: "integer", value: $ec} end), {type: "text", value: $tail}, {type: "text", value: $id}]}},
+              {type: "close"}
+            ]}' > "$RUNNER_TEMP/writeback.json"
+          curl -sS -X POST "$TURSO_URL/v2/pipeline" \
+            -H "Authorization: Bearer $TURSO_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/writeback.json" > "$RUNNER_TEMP/writeback-resp.json"
+          if jq -e '.results[0].type == "ok"' "$RUNNER_TEMP/writeback-resp.json" > /dev/null; then
+            echo "wrote back status=$status for job $JOB_ID"
+          else
+            echo "WRITEBACK FAILED for job $JOB_ID"
+            cat "$RUNNER_TEMP/writeback-resp.json"
+            exit 1
+          fi
+
+      - name: Upload job output artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dispatch-job-${{ inputs.job_id }}
+          path: job-output.log
+          retention-days: 14
+          if-no-files-found: ignore
