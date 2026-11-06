@@ -303,3 +303,34 @@ tools/rustdesk-gl/crop-*.png
 /scratch-lane-i/
 tools/fleet.*-bak
 tools/runtime-db-export/state.lock
+
+# review 2026-11-06: root fleet-lane scratch (claim/park/handoff payload
+# dumps, agent-note drafts, one-off edit scripts, ls-remote/PR-list dumps,
+# lane scratch trees), empty marker files, tools/ one-off lane helpers,
+# and the ask-ledger bytecode cache
+/.todo
+/claim-o-*.err
+/claim-o-next.sh
+/claim_loop_o.sh
+/diag-*.md
+/edit-*.py
+/hb.json
+/hb.err
+/hb[0-9]*.*
+/health.txt
+/lane-*/
+/lane_*/
+/lane-*.json
+/lane-*.sh
+/scratch-*/
+/shift-*-work/
+/lsrem-*.err
+/note.md
+/park[0-9]*.err
+/pk.json
+/prlist-*.err
+/prlist-*.json
+/signal.json
+tools/ask-ledger/__pycache__/
+tools/claim-once.sh
+tools/handoff.sh
