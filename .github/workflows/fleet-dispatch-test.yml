@@ -101,9 +101,13 @@ jobs:
             -H "Authorization: Bearer $TURSO_TOKEN" \
             -H "Content-Type: application/json" \
             --data @"$RUNNER_TEMP/writeback.json" > "$RUNNER_TEMP/writeback-resp.json"
-          jq -e '.results[0].type == "ok"' "$RUNNER_TEMP/writeback-resp.json" > /dev/null \
-            && echo "wrote back status=$status for job $JOB_ID" \
-            || { echo "WRITEBACK FAILED for job $JOB_ID"; cat "$RUNNER_TEMP/writeback-resp.json"; exit 1; }
+          if jq -e '.results[0].type == "ok"' "$RUNNER_TEMP/writeback-resp.json" > /dev/null; then
+            echo "wrote back status=$status for job $JOB_ID"
+          else
+            echo "WRITEBACK FAILED for job $JOB_ID"
+            cat "$RUNNER_TEMP/writeback-resp.json"
+            exit 1
+          fi
 
       - name: Upload job output artifact
         if: always()
