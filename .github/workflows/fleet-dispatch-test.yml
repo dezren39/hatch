@@ -39,7 +39,7 @@ jobs:
             exit 1
           fi
           jq -n \
-            --arg id "$JOB_ID" --argjson rid "$GITHUB_RUN_ID" \
+            --arg id "$JOB_ID" --arg rid "$GITHUB_RUN_ID" \
             --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             '{requests: [
               {type: "execute", stmt: {sql: "select target_ref, script from jobs where id = ?", args: [{type: "text", value: $id}]}},
@@ -50,6 +50,11 @@ jobs:
             -H "Authorization: Bearer $TURSO_TOKEN" \
             -H "Content-Type: application/json" \
             --data @"$RUNNER_TEMP/pipeline.json" > "$RUNNER_TEMP/resp.json"
+          if ! jq -e '.results[0].type == "ok"' "$RUNNER_TEMP/resp.json" > /dev/null; then
+            echo "dispatch store fetch failed for job $JOB_ID:" | tee -a job-output.log
+            head -c 1000 "$RUNNER_TEMP/resp.json" | tee -a job-output.log
+            exit 1
+          fi
           row=$(jq -c '.results[0].response.result.rows[0] // empty' "$RUNNER_TEMP/resp.json")
           if [ -z "$row" ]; then
             echo "job $JOB_ID not found in dispatch store" | tee -a job-output.log
@@ -83,18 +88,17 @@ jobs:
           set -uo pipefail
           code='${{ steps.exec.outputs.code }}'
           if [ -z "$code" ]; then
-            status="error"; ec="null"
-          elif [ "$code" = "0" ]; then
-            status="succeeded"; ec="$code"
+            status="error"; ecarg='{"type": "null"}'
           else
-            status="failed"; ec="$code"
+            if [ "$code" = "0" ]; then status="succeeded"; else status="failed"; fi
+            ecarg="{\"type\": \"integer\", \"value\": \"$code\"}"
           fi
           tail -c 6000 job-output.log > "$RUNNER_TEMP/tail.txt" 2>/dev/null || : > "$RUNNER_TEMP/tail.txt"
           jq -n \
-            --arg id "$JOB_ID" --arg status "$status" --argjson ec "$ec" \
+            --arg id "$JOB_ID" --arg status "$status" --argjson ecarg "$ecarg" \
             --rawfile tail "$RUNNER_TEMP/tail.txt" \
             '{requests: [
-              {type: "execute", stmt: {sql: "update jobs set status = ?, exit_code = ?, output_tail = ?, updated_at = strftime('"'"'%Y-%m-%dT%H:%M:%SZ'"'"', '"'"'now'"'"') where id = ?", args: [{type: "text", value: $status}, (if $ec == null then {type: "null"} else {type: "integer", value: $ec} end), {type: "text", value: $tail}, {type: "text", value: $id}]}},
+              {type: "execute", stmt: {sql: "update jobs set status = ?, exit_code = ?, output_tail = ?, updated_at = strftime('"'"'%Y-%m-%dT%H:%M:%SZ'"'"', '"'"'now'"'"') where id = ?", args: [{type: "text", value: $status}, $ecarg, {type: "text", value: $tail}, {type: "text", value: $id}]}},
               {type: "close"}
             ]}' > "$RUNNER_TEMP/writeback.json"
           curl -sS -X POST "$TURSO_URL/v2/pipeline" \
