@@ -16,7 +16,7 @@ one repo never fails the others; exit is non-zero only if ALL repos fail.
 
 agent.events sink (#5690): AGENT_EVENTS_SINK = pg (default) | dual |
 turso selects where the snapshot_refresh row goes — the PG batch, the
-muse-queue Turso events table, or both (dual: Turso failure non-fatal).
+fleet-queue Turso events table, or both (dual: Turso failure non-fatal).
 The repo_snapshots / watermarks writes always stay PG (separate bullet).
 Cutover: doc/fleet/agent-events-turso.md in developing-today/code.
 """
@@ -63,7 +63,7 @@ def jb(obj):
     return q(json.dumps(obj)) + "::jsonb"
 
 
-EVENTS_TURSO_URL = "https://muse-queue-dezren39.aws-us-east-1.turso.io"
+EVENTS_TURSO_URL = "https://fleet-queue-dezren39.aws-us-east-1.turso.io"
 
 
 def events_sink():
@@ -72,18 +72,18 @@ def events_sink():
 
 
 def turso_events_append(kind, detail, at_iso):
-    """Append one row to the muse-queue events table (libSQL HTTP
+    """Append one row to the fleet-queue events table (libSQL HTTP
     pipeline). Token resolved by name via the secrets CLI, never
     stored here. Raises on failure; the caller decides fatality.
     Timestamp normalized to the queue backend's format (whole
     seconds, Z) so lexicographic order stays chronological."""
     import urllib.request
-    tok = run(["fleet", "secrets", "get", "turso.muse-queue-rw-token"],
+    tok = run(["fleet", "secrets", "get", "turso.fleet-queue-rw-token"],
               timeout=60)
     token = tok.stdout.strip()
     if tok.returncode != 0 or not token:
         raise RuntimeError(
-            f"secrets get turso.muse-queue-rw-token failed: "
+            f"secrets get turso.fleet-queue-rw-token failed: "
             f"{tok.stderr.strip()[:200]}")
     created = at_iso.replace("+00:00", "Z")
     if "." in created:
