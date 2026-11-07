@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quota recorder (Drew's directive 2026-10-28; Supabase landing added
+"""Quota recorder (Drew's directive 2026-10-28; DB landing added
 2026-10-28 at Drew's direction): every tick, append a timestamped record
 of Muse's own subscription quota, read via the premade
 `subscription-status` CLI (plan, weekly percent used, reset, additional
@@ -15,26 +15,32 @@ Two sinks, file first:
      ~/workspace/goals/stewardship-commission-recurring-review-and-dispatch/
        hidden_files/visibility/quota-records-YYYY-MM.jsonl
    The file is append-only and is the source of truth.
-2. SUPABASE (secondary): the same records are upserted into
-   agent.quota_records (muse-dev project) via ~/tools/supabase-exec.py,
+2. TURSO (secondary; was Supabase agent.quota_records until the
+   2026-11-06 cutover, Drew's order — Supabase→Turso migration Wave 3,
+   code#5690): the same records are inserted into `agent_quota_records`
+   in the Turso DB `muse-platform` via the libsql HTTP pipeline,
    PK (source, id, ts) — id is the record's pool id for per-pool sources
-   ("" for muse-subscription) — INSERT ... ON CONFLICT DO NOTHING, so
-   re-sends are harmless. Every record is born UNSENT; a record counts as sent only
+   ("" for muse-subscription) — INSERT OR IGNORE, so re-sends are
+   harmless. Every record is born UNSENT; a record counts as sent only
    when an ack line in the same JSONL covers its ts. After appending its
    tick, the recorder flushes ALL unsent records in the current and
-   previous month files (this tick's plus any backlog) in one upsert per
-   file, then appends a receipt line to that file:
-     success: {"kind": "supabase-ack",   "ts": ..., "through": <max record
+   previous month files (this tick's plus any backlog) in chunked
+   inserts per file, then appends a receipt line to that file:
+     success: {"kind": "turso-ack",   "ts": ..., "through": <max record
                ts landed>, "count": <records landed by this flush>}
-     failure: {"kind": "supabase-error", "ts": ..., "error": <what failed>,
+     failure: {"kind": "turso-error", "ts": ..., "error": <what failed>,
                "pending": <records still unsent in that file>}
+   Receipt lines written before the cutover carry kind "supabase-ack" /
+   "supabase-error"; the parser accepts both (ack history stays valid).
    Unsent state is derivable from the file alone: records with a ts later
    than the last ack line's "through" (or all records, if no ack exists)
    are pending. Failures never lose data — the next tick retries
-   everything un-acked. The flush subprocess gets its egress proxy from
+   everything un-acked. The flush gets its egress proxy from
    ~/tools/secrets.d/mcpx-daemon.env when the caller's env has none
    (the systemd unit's minimal env has no proxy; same pattern as the
-   fleet-feed collector).
+   fleet-feed collector). The DB token is fetched by name only
+   (Bitwarden `turso.muse-platform-rw-token`, via the fleet secrets
+   verb) at flush time and never stored.
 
 No LLM involved. Always exits 0; failures are recorded as data.
 """
@@ -51,8 +57,11 @@ OUT_DIR = os.path.expanduser(
     "/hidden_files/visibility"
 )
 SUBSCRIPTION_STATUS = "/opt/hatch/bin/subscription-status"
-SUPABASE_EXEC = os.path.expanduser("~/tools/supabase-exec.py")
-TABLE = "agent.quota_records"
+TURSO_URL = "https://muse-platform-dezren39.aws-us-east-1.turso.io"
+TURSO_TOKEN_SECRET = "turso.muse-platform-rw-token"
+TABLE = "agent_quota_records"
+FLEET = os.path.expanduser("~/tools/bin/fleet")
+CHUNK = 200
 
 
 def record_subscription(ts):
@@ -86,7 +95,7 @@ def record_subscription(ts):
     return rec
 
 
-# --- Supabase landing -----------------------------------------------------
+# --- Turso landing --------------------------------------------------------
 
 def _sql_str(v):
     if v is None:
@@ -100,30 +109,32 @@ def _sql_num(v):
     return "NULL"
 
 
-def build_upsert(records):
+def build_insert(records, inserted_at):
     rows = []
     for r in records:
         rows.append(
             "("
             + ", ".join([
                 _sql_str(r.get("source")),
-                _sql_str(r.get("id") or ""),
-                _sql_str(r.get("ts")) + "::timestamptz",
+                _sql_str(r.get("ts")),
                 _sql_str(r.get("plan")),
                 _sql_num(r.get("weekly_percent")),
                 _sql_str(r.get("resets")),
                 _sql_num(r.get("additional_percent")),
                 _sql_str(r.get("additional_left")),
                 _sql_str(r.get("error")),
-                _sql_str(json.dumps(r)) + "::jsonb",
+                _sql_str(json.dumps(r)),
+                _sql_str(inserted_at),
+                _sql_str(r.get("id") or ""),
             ])
             + ")"
         )
     return (
-        f"INSERT INTO {TABLE} (source, id, ts, plan, weekly_percent, resets,"
-        " additional_percent, additional_left, error, payload) VALUES\n"
+        f"INSERT OR IGNORE INTO {TABLE} (source, ts, plan, weekly_percent,"
+        " resets, additional_percent, additional_left, error, payload,"
+        " inserted_at, id) VALUES\n"
         + ",\n".join(rows)
-        + "\nON CONFLICT (source, id, ts) DO NOTHING;"
+        + ";"
     )
 
 
@@ -131,8 +142,9 @@ def load_file_state(path):
     """Return (records, acked_through) parsed from one JSONL file.
 
     Records are lines without a "kind" field; receipt lines carry one.
-    acked_through is the "through" of the file's last supabase-ack line,
-    or None when no flush has ever landed for this file.
+    acked_through is the "through" of the file's last ack line
+    ("turso-ack", or the pre-cutover "supabase-ack"), or None when no
+    flush has ever landed for this file.
     """
     records = []
     acked_through = None
@@ -145,7 +157,7 @@ def load_file_state(path):
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if obj.get("kind") == "supabase-ack":
+            if obj.get("kind") in ("turso-ack", "supabase-ack"):
                 acked_through = obj.get("through", acked_through)
             elif "kind" not in obj and "ts" in obj:
                 records.append(obj)
@@ -160,12 +172,12 @@ PROXY_KEYS = (
 
 
 def flush_env():
-    """Env for the supabase-exec subprocess. Under the systemd unit's
-    minimal env there is no egress proxy, and both hops of the flush
-    (bws -> Bitwarden API, curl -> Supabase API) need one; mirror the
-    fleet-feed collector's pattern: when no proxy is set, load the proxy
-    values from ~/tools/secrets.d/mcpx-daemon.env into the child's env
-    only (memory only — never argv, never a file)."""
+    """Env for the flush subprocesses. Under the systemd unit's minimal
+    env there is no egress proxy, and both hops of the flush (fleet
+    secrets broker -> Bitwarden, curl -> libsql endpoint) need one;
+    mirror the fleet-feed collector's pattern: when no proxy is set,
+    load the proxy values from ~/tools/secrets.d/mcpx-daemon.env into
+    the child's env only (memory only — never argv, never a file)."""
     env = dict(os.environ)
     if not (env.get("HTTPS_PROXY") or env.get("https_proxy")):
         try:
@@ -179,24 +191,53 @@ def flush_env():
     return env
 
 
-def run_flush_sql(sql):
-    """Run one SQL statement file through supabase-exec.py.
+def get_turso_token(env):
+    p = subprocess.run(
+        [FLEET, "secrets", "get", TURSO_TOKEN_SECRET],
+        capture_output=True, text=True, timeout=60, env=env,
+    )
+    val = (p.stdout or "").strip()
+    if not val:
+        raise RuntimeError(f"empty token from fleet secrets ({TURSO_TOKEN_SECRET})")
+    return val
 
-    Returns (ok, error_text)."""
-    fd, fname = tempfile.mkstemp(suffix=".sql", prefix="quota-flush-")
+
+def run_flush(records, now_ts):
+    """Insert one chunk of records into Turso via the libsql HTTP
+    pipeline. Returns (ok, error_text)."""
+    env = flush_env()
+    try:
+        token = get_turso_token(env)
+    except Exception as e:
+        return False, f"token: {type(e).__name__}: {e}"[:300]
+    body = {"requests": [
+        {"type": "execute",
+         "stmt": {"sql": build_insert(records, now_ts)}},
+        {"type": "close"},
+    ]}
+    fd, fname = tempfile.mkstemp(suffix=".json", prefix="quota-flush-")
     try:
         with os.fdopen(fd, "w") as f:
-            f.write(sql)
+            json.dump(body, f)
         p = subprocess.run(
-            [sys.executable, SUPABASE_EXEC, fname],
-            capture_output=True, text=True, timeout=240, env=flush_env(),
+            ["curl", "-sS", "-m", "120", "-X", "POST",
+             f"{TURSO_URL}/v2/pipeline",
+             "-H", f"Authorization: Bearer {token}",
+             "-H", "Content-Type: application/json",
+             "--data-binary", f"@{fname}"],
+            capture_output=True, text=True, timeout=180, env=env,
         )
-        if p.returncode == 0:
-            return True, ""
-        tail = (p.stderr or "").strip().splitlines()
-        head = (p.stdout or "").strip().splitlines()
-        err = tail[-1] if tail else (head[0] if head else "unknown failure")
-        return False, f"supabase-exec exit {p.returncode}: {err}"[:300]
+        if p.returncode != 0:
+            err = (p.stderr or p.stdout or "").strip().splitlines()
+            return False, f"curl exit {p.returncode}: {err[-1] if err else ''}"[:300]
+        try:
+            out = json.loads(p.stdout)
+        except json.JSONDecodeError:
+            return False, f"unparseable pipeline response: {p.stdout[:120]}"
+        for res in out.get("results", []):
+            if res.get("type") == "error":
+                return False, f"turso: {res.get('error', {}).get('message', res)}"[:300]
+        return True, ""
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"[:300]
     finally:
@@ -219,23 +260,30 @@ def flush_file(path, now_ts):
     ]
     if not pending:
         return 0
-    ok, err = run_flush_sql(build_upsert(pending))
+    landed_through = acked_through
+    landed = 0
+    for i in range(0, len(pending), CHUNK):
+        chunk = pending[i:i + CHUNK]
+        ok, err = run_flush(chunk, now_ts)
+        if not ok:
+            with open(path, "a") as f:
+                f.write(json.dumps({
+                    "kind": "turso-error",
+                    "ts": now_ts,
+                    "error": err,
+                    "pending": len(pending) - landed,
+                }) + "\n")
+            return len(pending) - landed
+        landed += len(chunk)
+        landed_through = chunk[-1]["ts"]
     with open(path, "a") as f:
-        if ok:
-            f.write(json.dumps({
-                "kind": "supabase-ack",
-                "ts": now_ts,
-                "through": max(r["ts"] for r in pending),
-                "count": len(pending),
-            }) + "\n")
-            return 0
         f.write(json.dumps({
-            "kind": "supabase-error",
+            "kind": "turso-ack",
             "ts": now_ts,
-            "error": err,
-            "pending": len(pending),
+            "through": landed_through,
+            "count": landed,
         }) + "\n")
-        return len(pending)
+    return 0
 
 
 def month_paths(now):
@@ -265,9 +313,9 @@ def main():
         still_pending += flush_file(p, ts)
     msg = f"{ts} recorded muse-subscription tick -> {path}"
     if still_pending:
-        msg += f" (supabase: {still_pending} record(s) still pending)"
+        msg += f" (turso: {still_pending} record(s) still pending)"
     else:
-        msg += " (supabase: all records landed)"
+        msg += " (turso: all records landed)"
     print(msg)
     return 0
 
