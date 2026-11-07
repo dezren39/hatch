@@ -65,6 +65,20 @@ SECRET_PATTERNS = [
 ]
 
 
+def fetch_secret_bws(name):
+    """Direct Bitwarden read (emergency route; bypasses the broker)."""
+    env = dict(os.environ)
+    with open(os.path.join(HOME, ".config/bitwarden/access-token")) as f:
+        env["BWS_ACCESS_TOKEN"] = f.read().strip()
+    bws = os.path.join(HOME, "tools/bin/bws")
+    lst = subprocess.run([bws, "secret", "list", "-o", "json"],
+                         capture_output=True, text=True, env=env, check=True)
+    sid = [s["id"] for s in json.loads(lst.stdout) if s["key"] == name][0]
+    got = subprocess.run([bws, "secret", "get", sid, "-o", "json"],
+                         capture_output=True, text=True, env=env, check=True)
+    return json.loads(got.stdout)["value"]
+
+
 def fetch_secret(name):
     """fleet secrets get first; bws emergency route if the verb returns
     empty (the broker path has been observed returning empty while
@@ -79,16 +93,7 @@ def fetch_secret(name):
         print(f"ask-ledger: fleet secrets error for {name}: {e}", file=sys.stderr)
     print(f"ask-ledger: warning: fleet secrets get {name} empty; "
           "using bws emergency route", file=sys.stderr)
-    env = dict(os.environ)
-    with open(os.path.join(HOME, ".config/bitwarden/access-token")) as f:
-        env["BWS_ACCESS_TOKEN"] = f.read().strip()
-    bws = os.path.join(HOME, "tools/bin/bws")
-    lst = subprocess.run([bws, "secret", "list", "-o", "json"],
-                         capture_output=True, text=True, env=env, check=True)
-    sid = [s["id"] for s in json.loads(lst.stdout) if s["key"] == name][0]
-    got = subprocess.run([bws, "secret", "get", sid, "-o", "json"],
-                         capture_output=True, text=True, env=env, check=True)
-    return json.loads(got.stdout)["value"]
+    return fetch_secret_bws(name)
 
 
 # ---------------------------------------------------------------- Turso
@@ -114,6 +119,14 @@ class Ledger:
         code, out = http("POST", self.url + "/v2/pipeline",
                          {"Authorization": f"Bearer {self.token}",
                           "Content-Type": "application/json"}, body, timeout=60)
+        if code in (401, 403, 404) and b"auth" in out:
+            # Broker may serve a stale token long after a BWS rotation
+            # (code#6767); refetch direct from Bitwarden and retry once.
+            self.token = fetch_secret_bws("turso.atlas-ask-ledger-token")
+            code, out = http("POST", self.url + "/v2/pipeline",
+                             {"Authorization": f"Bearer {self.token}",
+                              "Content-Type": "application/json"}, body,
+                             timeout=60)
         if code != 200:
             raise RuntimeError(f"ledger HTTP {code}: {out[:200]!r}")
         out = json.loads(out)
