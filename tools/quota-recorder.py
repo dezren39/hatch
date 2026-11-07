@@ -18,7 +18,7 @@ Two sinks, file first:
 2. TURSO (secondary; was Supabase agent.quota_records until the
    2026-11-06 cutover, Drew's order — Supabase→Turso migration Wave 3,
    code#5690): the same records are inserted into `agent_quota_records`
-   in the Turso DB `muse-platform` via the libsql HTTP pipeline,
+   in the Turso DB `fleet-platform` via the libsql HTTP pipeline,
    PK (source, id, ts) — id is the record's pool id for per-pool sources
    ("" for muse-subscription) — INSERT OR IGNORE, so re-sends are
    harmless. Every record is born UNSENT; a record counts as sent only
@@ -39,7 +39,7 @@ Two sinks, file first:
    ~/tools/secrets.d/mcpx-daemon.env when the caller's env has none
    (the systemd unit's minimal env has no proxy; same pattern as the
    fleet-feed collector). The DB token is fetched by name only
-   (Bitwarden `turso.muse-platform-rw-token`, via the fleet secrets
+   (Bitwarden `turso.fleet-platform-rw-token`, via the fleet secrets
    verb) at flush time and never stored.
 
 No LLM involved. Always exits 0; failures are recorded as data.
@@ -57,8 +57,8 @@ OUT_DIR = os.path.expanduser(
     "/hidden_files/visibility"
 )
 SUBSCRIPTION_STATUS = "/opt/hatch/bin/subscription-status"
-TURSO_URL = "https://muse-platform-dezren39.aws-us-east-1.turso.io"
-TURSO_TOKEN_SECRET = "turso.muse-platform-rw-token"
+TURSO_URL = "https://fleet-platform-dezren39.aws-us-east-1.turso.io"
+TURSO_TOKEN_SECRET = "turso.fleet-platform-rw-token"
 TABLE = "agent_quota_records"
 FLEET = os.path.expanduser("~/tools/bin/fleet")
 CHUNK = 200
