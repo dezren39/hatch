@@ -334,3 +334,12 @@ tools/runtime-db-export/state.lock
 tools/ask-ledger/__pycache__/
 tools/claim-once.sh
 tools/handoff.sh
+
+# review 2026-11-07: root fleet-lane scratch (mirror progress log,
+# heartbeat note, empty fail/runs err dumps, stray copy of an
+# opencode-repo test file)
+/a-progress.txt
+/acp-test-main.mjs
+/fail-*.err
+/runs-*.err
+/hb-*.md
