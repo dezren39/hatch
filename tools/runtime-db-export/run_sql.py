@@ -1,39 +1,70 @@
 #!/usr/bin/env python3
-"""Run a SQL file against muse-dev Supabase via ~/tools/supabase-exec.py,
-loading the egress proxy from ~/tools/secrets.d/mcpx-daemon.env into the
-subprocess env when the caller has none (recorder/fleet-feed pattern).
-Usage: run_sql.py <sql-file>   (exit code = supabase-exec exit code)
+"""Run a SQL file against the Turso DB `muse-mirror` (repointed
+2026-11-06 from muse-dev2 Supabase; PG version kept as run_sql_pg.py).
+Usage: run_sql.py <sql-file>
+
+The job's SQL files are written in the old PG dialect; this runner
+translates exactly the constructs they use:
+  agent.mirror_*  / agent.mirror_history_*   -> agent_mirror_* names
+  now()                                      -> current UTC ISO timestamp
+  DATE 'YYYY-MM-DD'                          -> 'YYYY-MM-DD'
+Statements run one by one over the libsql pipeline (see
+turso_client.py); SELECT results print as JSON lines so callers can
+read reconciliation counts from stdout.
 """
-import os
-import subprocess
+import json
+import re
 import sys
+from datetime import datetime, timezone
 
-SUPABASE_EXEC = os.path.expanduser("~/tools/supabase-exec.py")
-PROXY_ENV_FILE = os.path.expanduser("~/tools/secrets.d/mcpx-daemon.env")
-PROXY_KEYS = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
-              "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy")
+sys.path.insert(0, __file__.rsplit("/", 1)[0])
+import turso_client
 
 
-def flush_env():
-    env = dict(os.environ)
-    if not (env.get("HTTPS_PROXY") or env.get("https_proxy")):
-        try:
-            with open(PROXY_ENV_FILE) as f:
-                for line in f:
-                    k, sep, v = line.strip().partition("=")
-                    if sep and k in PROXY_KEYS and k not in env:
-                        env[k] = v.strip().strip('"').strip("'")
-        except OSError:
-            pass
-    return env
+def translate(sql):
+    now = datetime.now(timezone.utc).isoformat()
+    sql = re.sub(r"\bagent\.(mirror(?:_history)?_[a-z0-9_]+)", r"agent_\1", sql)
+    sql = re.sub(r"\bnow\(\)", f"'{now}'", sql)
+    sql = re.sub(r"(?i)\bDATE\s+('[^']+')", r"\1", sql)
+    return sql
+
+
+def split_statements(sql):
+    out, buf = [], ""
+    for line in sql.splitlines():
+        if line.strip().startswith("--"):
+            continue
+        buf += line + "\n"
+        if line.rstrip().endswith(";"):
+            stmt = buf.strip().rstrip(";").strip()
+            if stmt:
+                out.append(stmt)
+            buf = ""
+    tail = buf.strip()
+    if tail:
+        out.append(tail)
+    return out
 
 
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
-    p = subprocess.run([sys.executable, SUPABASE_EXEC, sys.argv[1]],
-                       env=flush_env(), timeout=300)
-    sys.exit(p.returncode)
+    with open(sys.argv[1]) as f:
+        sql = translate(f.read())
+    stmts = split_statements(sql)
+    # make sure any landing tables the SQL touches exist (history tables
+    # and shells were not part of the migration copy)
+    names = sorted(set(re.findall(r"agent_mirror_[a-z0-9_]+", sql)))
+    client = turso_client.client()
+    pre = turso_client.ensure_tables_sql(names)
+    if pre:
+        client.execute(pre)
+    for stmt in stmts:
+        results = client.execute([(stmt, [])])
+        for res in results:
+            for row in res.get("rows", []):
+                print(json.dumps(row, default=str))
+    print(f"run_sql: {len(stmts)} statement(s) ok")
 
 
 if __name__ == "__main__":

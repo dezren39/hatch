@@ -13,6 +13,12 @@ reads the nixpkgs-unstable head from `gh api` too.
 
 Writes go through ~/tools/supabase-exec.py (temp .sql files). Failure of
 one repo never fails the others; exit is non-zero only if ALL repos fail.
+
+agent.events sink (#5690): AGENT_EVENTS_SINK = pg (default) | dual |
+turso selects where the snapshot_refresh row goes — the PG batch, the
+muse-queue Turso events table, or both (dual: Turso failure non-fatal).
+The repo_snapshots / watermarks writes always stay PG (separate bullet).
+Cutover: doc/fleet/agent-events-turso.md in developing-today/code.
 """
 import json
 import os
@@ -55,6 +61,51 @@ def q(value):
 def jb(obj):
     """SQL jsonb literal."""
     return q(json.dumps(obj)) + "::jsonb"
+
+
+EVENTS_TURSO_URL = "https://muse-queue-dezren39.aws-us-east-1.turso.io"
+
+
+def events_sink():
+    """AGENT_EVENTS_SINK for the snapshot_refresh row: pg|dual|turso."""
+    return os.environ.get("AGENT_EVENTS_SINK", "pg").strip().lower()
+
+
+def turso_events_append(kind, detail, at_iso):
+    """Append one row to the muse-queue events table (libSQL HTTP
+    pipeline). Token resolved by name via the secrets CLI, never
+    stored here. Raises on failure; the caller decides fatality.
+    Timestamp normalized to the queue backend's format (whole
+    seconds, Z) so lexicographic order stays chronological."""
+    import urllib.request
+    tok = run(["fleet", "secrets", "get", "turso.muse-queue-rw-token"],
+              timeout=60)
+    token = tok.stdout.strip()
+    if tok.returncode != 0 or not token:
+        raise RuntimeError(
+            f"secrets get turso.muse-queue-rw-token failed: "
+            f"{tok.stderr.strip()[:200]}")
+    created = at_iso.replace("+00:00", "Z")
+    if "." in created:
+        created = created.split(".")[0] + "Z"
+    sql = ("insert into events (worker_id, task_id, kind, detail,"
+           " created_at) values (" + ", ".join([
+               q("fleet-fetcher"), "NULL", q(kind),
+               q(json.dumps(detail)), q(created)]) + ")")
+    body = json.dumps({"requests": [
+        {"type": "execute", "stmt": {"sql": sql}},
+        {"type": "close"}]}).encode()
+    req = urllib.request.Request(
+        EVENTS_TURSO_URL + "/v2/pipeline", data=body, method="POST",
+        headers={"Authorization": f"Bearer {token}",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        out = json.loads(resp.read())
+    failed = [r for r in out.get("results", []) if r.get("type") == "error"]
+    if failed:
+        raise RuntimeError(
+            f"turso events insert failed: "
+            f"{failed[0].get('error', {}).get('message', 'pipeline error')}"[:200])
 
 
 def run(cmd, timeout=120, env_extra=None):
@@ -229,19 +280,35 @@ def main():
             write_errors.append(f"{repo}: {str(exc)[:200]}")
 
     ok_repos = [r for r, v in results.items() if v["ok"]]
-    try:
-        write_sql([
-            "insert into agent.watermarks (key, value, updated_at) values ("
-            f"'fetcher:last_run', {jb({'at': started, 'repos_ok': ok_repos, 'repos_failed': [r for r, v in results.items() if not v['ok']]})}, "
-            "now()) on conflict (key) do update set"
-            " value = excluded.value, updated_at = now();",
+    sink = events_sink()
+    ev_detail = {'at': started, 'repos': results}
+    final_stmts = [
+        "insert into agent.watermarks (key, value, updated_at) values ("
+        f"'fetcher:last_run', {jb({'at': started, 'repos_ok': ok_repos, 'repos_failed': [r for r, v in results.items() if not v['ok']]})}, "
+        "now()) on conflict (key) do update set"
+        " value = excluded.value, updated_at = now();",
+    ]
+    if sink != "turso":
+        final_stmts.append(
             "insert into agent.events (worker_id, kind, detail) values ("
-            f"'fleet-fetcher', 'snapshot_refresh', {jb({'at': started, 'repos': results})});",
-        ])
+            f"'fleet-fetcher', 'snapshot_refresh', {jb(ev_detail)});")
+    sink_notes = []
+    try:
+        write_sql(final_stmts)
         db_ok = not write_errors
     except Exception as exc:
         db_ok = False
         write_errors.append(f"final: {str(exc)[:200]}")
+    if sink in ("dual", "turso"):
+        try:
+            turso_events_append("snapshot_refresh", ev_detail, started)
+        except Exception as exc:
+            if sink == "turso":
+                db_ok = False
+                write_errors.append(f"turso-events: {str(exc)[:200]}")
+            else:
+                sink_notes.append(
+                    f"turso dual-write failed: {str(exc)[:200]}")
 
     summary = (f"{started} fleet-fetch: "
                + " ".join(
@@ -249,6 +316,10 @@ def main():
                    if v.get("ok") else f"{r}=FAIL({v.get('error', '?')[:80]})"
                    for r, v in results.items())
                + f" db_write={'ok' if db_ok else 'FAIL'}")
+    if sink != "pg":
+        summary += f" events_sink={sink}"
+    if sink_notes:
+        summary += " sink_notes=" + " | ".join(sink_notes)
     if write_errors:
         summary += " write_errors=" + " | ".join(write_errors)
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
