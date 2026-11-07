@@ -2,22 +2,27 @@
 """fleet-fetch.py — deterministic repo snapshot fetcher (Phase B part 1).
 
 For each fleet repo: pull current state via `gh api` and upsert a row
-into agent.repo_snapshots in Supabase muse-dev. One agent.events row
+into agent_repo_snapshots in the fleet-queue Turso DB. One events row
 per run (worker_id 'fleet-fetcher', kind 'snapshot_refresh') plus
-watermarks. Zero agent tokens: pure script, run by fleet-fetch.timer.
+watermarks in agent_watermarks (same DB). Zero agent tokens: pure
+script, run by fleet-fetch.timer.
 
 NO LOCAL CLONES (Drew, 2026-11-02): the sandbox holds no repo copies.
 The former clone-warming `git fetch` step was removed; the snapshot
 payload always came from `gh api`, and the nix upstream watermark now
 reads the nixpkgs-unstable head from `gh api` too.
 
-Writes go through ~/tools/supabase-exec.py (temp .sql files). Failure of
-one repo never fails the others; exit is non-zero only if ALL repos fail.
+Writes go through the libSQL HTTP pipeline to fleet-queue (token by
+name: turso.fleet-queue-rw-token). Failure of one repo never fails
+the others; exit is non-zero only if ALL repos fail.
 
-agent.events sink (#5690): AGENT_EVENTS_SINK = pg (default) | dual |
-turso selects where the snapshot_refresh row goes — the PG batch, the
-fleet-queue Turso events table, or both (dual: Turso failure non-fatal).
-The repo_snapshots / watermarks writes always stay PG (separate bullet).
+History: snapshots/watermarks lived in Supabase muse-dev
+(agent.repo_snapshots / agent.watermarks) until 2026-11-07, when the
+#5693 ci re-home moved them to fleet-queue alongside the github-ci
+Worker (which advances head_sha in the same table on push). The
+snapshot_refresh event's sink (#5690, AGENT_EVENTS_SINK) had already
+flipped to turso; the PG event leg is retired with this repoint —
+the event now always lands in the fleet-queue events table.
 Cutover: doc/fleet/agent-events-turso.md in developing-today/code.
 """
 import json
@@ -31,7 +36,6 @@ from datetime import datetime, timezone
 # gh auth lookup and every path below (first timer fires failed silently;
 # interactive runs masked it). /home/hatch is the durable home on this box.
 HOME = "/home/hatch"
-SUPABASE_EXEC = os.path.join(HOME, "tools", "supabase-exec.py")
 LOG_FILE = os.path.join(HOME, "logs", "fleet-fetch.log")
 SQL_TMPDIR = os.path.join(HOME, "tmp")  # /tmp is a small tmpfs on this box
 
@@ -71,13 +75,9 @@ def events_sink():
     return os.environ.get("AGENT_EVENTS_SINK", "pg").strip().lower()
 
 
-def turso_events_append(kind, detail, at_iso):
-    """Append one row to the fleet-queue events table (libSQL HTTP
-    pipeline). Token resolved by name via the secrets CLI, never
-    stored here. Raises on failure; the caller decides fatality.
-    Timestamp normalized to the queue backend's format (whole
-    seconds, Z) so lexicographic order stays chronological."""
-    import urllib.request
+def queue_token():
+    """fleet-queue RW token, resolved by name via the secrets CLI,
+    never stored here."""
     tok = run(["fleet", "secrets", "get", "turso.fleet-queue-rw-token"],
               timeout=60)
     token = tok.stdout.strip()
@@ -85,6 +85,34 @@ def turso_events_append(kind, detail, at_iso):
         raise RuntimeError(
             f"secrets get turso.fleet-queue-rw-token failed: "
             f"{tok.stderr.strip()[:200]}")
+    return token
+
+
+def turso_pipeline(statements):
+    """Run SQL statements against fleet-queue via the libSQL HTTP
+    pipeline. Raises on any error result."""
+    import urllib.request
+    body = json.dumps({"requests": [
+        *[{"type": "execute", "stmt": {"sql": s}} for s in statements],
+        {"type": "close"}]}).encode()
+    req = urllib.request.Request(
+        EVENTS_TURSO_URL + "/v2/pipeline", data=body, method="POST",
+        headers={"Authorization": f"Bearer {queue_token()}",
+                 "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        out = json.loads(resp.read())
+    failed = [r for r in out.get("results", []) if r.get("type") == "error"]
+    if failed:
+        raise RuntimeError(
+            f"turso pipeline failed: "
+            f"{failed[0].get('error', {}).get('message', 'pipeline error')}"[:200])
+
+
+def turso_events_append(kind, detail, at_iso):
+    """Append one row to the fleet-queue events table. Raises on
+    failure; the caller decides fatality. Timestamp normalized to
+    the queue backend's format (whole seconds, Z) so lexicographic
+    order stays chronological."""
     created = at_iso.replace("+00:00", "Z")
     if "." in created:
         created = created.split(".")[0] + "Z"
@@ -92,20 +120,7 @@ def turso_events_append(kind, detail, at_iso):
            " created_at) values (" + ", ".join([
                q("fleet-fetcher"), "NULL", q(kind),
                q(json.dumps(detail)), q(created)]) + ")")
-    body = json.dumps({"requests": [
-        {"type": "execute", "stmt": {"sql": sql}},
-        {"type": "close"}]}).encode()
-    req = urllib.request.Request(
-        EVENTS_TURSO_URL + "/v2/pipeline", data=body, method="POST",
-        headers={"Authorization": f"Bearer {token}",
-                 "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        out = json.loads(resp.read())
-    failed = [r for r in out.get("results", []) if r.get("type") == "error"]
-    if failed:
-        raise RuntimeError(
-            f"turso events insert failed: "
-            f"{failed[0].get('error', {}).get('message', 'pipeline error')}"[:200])
+    turso_pipeline([sql])
 
 
 def run(cmd, timeout=120, env_extra=None):
@@ -199,29 +214,22 @@ def fetch_repo(repo):
 
 
 def write_sql(statements):
-    os.makedirs(SQL_TMPDIR, exist_ok=True)
-    fd, path = tempfile.mkstemp(suffix=".sql", dir=SQL_TMPDIR)
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write("\n".join(statements) + "\n")
-        out = run([sys.executable, SUPABASE_EXEC, path], timeout=180)
-        if out.returncode != 0:
-            raise RuntimeError(
-                f"supabase-exec failed: {out.stderr.strip()[:300]} "
-                f"{out.stdout.strip()[:300]}")
-    finally:
-        os.unlink(path)
+    """Kept name, new home (#5693): statements run against the
+    fleet-queue Turso DB (agent_repo_snapshots / agent_watermarks /
+    events), not Supabase."""
+    turso_pipeline(statements)
 
 
 def snapshot_statements(repo, snap, started):
+    fetched = q(started)
     stmts = [
-        "insert into agent.repo_snapshots (repo, head_sha, default_branch,"
+        "insert into agent_repo_snapshots (repo, head_sha, default_branch,"
         " open_prs, open_issues, open_pr_count, open_issue_count,"
         " ci_summary, fetched_at, fetch_source) values ("
         f"{q(repo)}, {q(snap['head_sha'])}, {q(snap['default_branch'])}, "
-        f"{jb(snap['open_prs'])}, {jb(snap['open_issues'])}, "
+        f"{q(json.dumps(snap['open_prs']))}, {q(json.dumps(snap['open_issues']))}, "
         f"{snap['open_pr_count']}, {snap['open_issue_count']}, "
-        f"{jb(snap['ci_summary'])}, now(), 'fetcher')"
+        f"{q(json.dumps(snap['ci_summary']))}, {fetched}, 'fetcher')"
         " on conflict (repo) do update set"
         " head_sha = excluded.head_sha,"
         " default_branch = excluded.default_branch,"
@@ -230,15 +238,15 @@ def snapshot_statements(repo, snap, started):
         " open_pr_count = excluded.open_pr_count,"
         " open_issue_count = excluded.open_issue_count,"
         " ci_summary = excluded.ci_summary,"
-        " fetched_at = now(), fetch_source = 'fetcher';"
+        f" fetched_at = {fetched}, fetch_source = 'fetcher';"
     ]
     if snap.get("_upstream_sha"):
         stmts.append(
-            "insert into agent.watermarks (key, value, updated_at) values ("
+            "insert into agent_watermarks (key, value, updated_at) values ("
             f"{q(UPSTREAM_WATERMARK_KEY)}, "
-            f"{jb({'sha': snap['_upstream_sha'], 'repo': repo, 'fetched_at': started})}, "
-            "now()) on conflict (key) do update set"
-            " value = excluded.value, updated_at = now();"
+            f"{q(json.dumps({'sha': snap['_upstream_sha'], 'repo': repo, 'fetched_at': started}))}, "
+            f"{fetched}) on conflict (key) do update set"
+            f" value = excluded.value, updated_at = {fetched};"
         )
     return stmts
 
@@ -283,32 +291,27 @@ def main():
     sink = events_sink()
     ev_detail = {'at': started, 'repos': results}
     final_stmts = [
-        "insert into agent.watermarks (key, value, updated_at) values ("
-        f"'fetcher:last_run', {jb({'at': started, 'repos_ok': ok_repos, 'repos_failed': [r for r, v in results.items() if not v['ok']]})}, "
-        "now()) on conflict (key) do update set"
-        " value = excluded.value, updated_at = now();",
+        "insert into agent_watermarks (key, value, updated_at) values ("
+        f"'fetcher:last_run', {q(json.dumps({'at': started, 'repos_ok': ok_repos, 'repos_failed': [r for r, v in results.items() if not v['ok']]}))}, "
+        f"{q(started)}) on conflict (key) do update set"
+        f" value = excluded.value, updated_at = {q(started)};",
     ]
-    if sink != "turso":
-        final_stmts.append(
-            "insert into agent.events (worker_id, kind, detail) values ("
-            f"'fleet-fetcher', 'snapshot_refresh', {jb(ev_detail)});")
     sink_notes = []
+    if sink == "pg":
+        # The PG event leg retired with the #5693 repoint; the
+        # snapshot_refresh event's home is the fleet-queue sink.
+        sink_notes.append("sink=pg ignored: PG event leg retired (#5693)")
     try:
         write_sql(final_stmts)
         db_ok = not write_errors
     except Exception as exc:
         db_ok = False
         write_errors.append(f"final: {str(exc)[:200]}")
-    if sink in ("dual", "turso"):
-        try:
-            turso_events_append("snapshot_refresh", ev_detail, started)
-        except Exception as exc:
-            if sink == "turso":
-                db_ok = False
-                write_errors.append(f"turso-events: {str(exc)[:200]}")
-            else:
-                sink_notes.append(
-                    f"turso dual-write failed: {str(exc)[:200]}")
+    try:
+        turso_events_append("snapshot_refresh", ev_detail, started)
+    except Exception as exc:
+        db_ok = False
+        write_errors.append(f"turso-events: {str(exc)[:200]}")
 
     summary = (f"{started} fleet-fetch: "
                + " ".join(
