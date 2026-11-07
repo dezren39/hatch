@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generic loader: read a JSON spec from stdin, build upsert SQL, and run
-it against the Turso DB `muse-mirror` (repointed 2026-11-06 from
+it against the Turso DB `fleet-mirror` (repointed 2026-11-06 from
 muse-dev2 Supabase; the PG version is kept alongside as load_rows_pg.py
 for reference/rollback, and run_sql_pg.py / schema.sql document the old
 landing side). Used by the runtime-db-export job for every unit.

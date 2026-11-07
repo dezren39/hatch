@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Shared Turso transport + landing-table DDL for the runtime-db-export
 loader, repointed 2026-11-06 from muse-dev2 Postgres (agent.mirror_*)
-to the dedicated Turso DB `muse-mirror` (agent_mirror_* tables).
+to the dedicated Turso DB `fleet-mirror` (agent_mirror_* tables;
+renamed from `muse-mirror` and converted libsql->TursoDB 2026-11-07,
+code#6619).
 Decision + evidence: developing-today/code#5691 (repoint, not retire).
 
 Target access:
-- HTTP pipeline (libsql /v2/pipeline) at the muse-mirror host. The
+- HTTP pipeline (libsql /v2/pipeline) at the fleet-mirror host. The
   sandbox reaches it through the AMBIENT proxy environment (urllib's
   default opener honors it); do not override proxy settings.
-- Token by NAME only: `turso.muse-mirror-rw-token`, resolved via
+- Token by NAME only: `turso.fleet-mirror-rw-token`, resolved via
   `fleet secrets get` (laptop broker first). If the DB rejects that
   value ("auth role not found" — the broker served a stale cached
   value after the BWS secret was rotated 2026-11-06; defect recorded
@@ -28,14 +30,14 @@ import sys
 import urllib.error
 import urllib.request
 
-DB_HTTP_URL = "https://muse-mirror-dezren39.aws-us-east-1.turso.io/v2/pipeline"
-TOKEN_NAME = "turso.muse-mirror-rw-token"
+DB_HTTP_URL = "https://fleet-mirror-dezren39.aws-us-east-1.turso.io/v2/pipeline"
+TOKEN_NAME = "turso.fleet-mirror-rw-token"
 FLEET = os.path.expanduser("~/tools/fleet")
 
 # SQLite DDL for every landing table (translated from schema.sql +
 # schema2.sql; PG types mapped per the Turso migration's typemap:
 # bigint/integer -> INTEGER, double -> REAL, boolean -> INTEGER,
-# date/timestamptz/jsonb -> TEXT). The 20 tables already in muse-mirror
+# date/timestamptz/jsonb -> TEXT). The 20 tables already in fleet-mirror
 # make CREATE IF NOT EXISTS a no-op; the 5 history tables and 3 shells
 # the migration deliberately did not copy are created here on first use.
 DDL = {
@@ -284,7 +286,7 @@ class AuthError(RuntimeError):
 
 
 class Turso:
-    """Executes batches of (sql, [python values]) against muse-mirror.
+    """Executes batches of (sql, [python values]) against fleet-mirror.
 
     A batch runs as one pipeline request sequence; statements in a batch
     share a session (temp tables work inside a batch)."""

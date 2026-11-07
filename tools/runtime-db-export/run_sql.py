@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a SQL file against the Turso DB `muse-mirror` (repointed
+"""Run a SQL file against the Turso DB `fleet-mirror` (repointed
 2026-11-06 from muse-dev2 Supabase; PG version kept as run_sql_pg.py).
 Usage: run_sql.py <sql-file>
 
