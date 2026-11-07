@@ -1,11 +1,20 @@
 # runtime-db-export
 
-Periodic export of the Muse runtime records DB into Drew's muse-dev
-Supabase project (`agent.mirror_*` tables). Built 2026-10-29, approved by
+Periodic export of the Muse runtime records DB into the Turso DB
+`muse-mirror` (`agent_mirror_*` tables). Built 2026-10-29, approved by
 Drew 2026-10-28. Runs as an agent cron job `runtime-db-export` every 6 hours
 (America/Chicago) — it must be an agent job because scripts cannot reach the
 runtime DB (per-exec mount namespaces hide the socket); the only source
 route is the `muse.db` tool inside an agent run.
+
+**Repointed 2026-11-06** (code#5691): the landing side moved from muse-dev2
+Supabase (`agent.mirror_*`) to the dedicated Turso DB `muse-mirror`
+(`agent_mirror_*`), whose initial contents are the migration copy of the PG
+tables (219,105 rows, parity-verified). The job was paused for the migration
+and is **safe to unpause** — see the status banner at the top of JOB-BODY.md
+for the first-run checks. Nothing in this directory writes to Postgres
+anymore; `load_rows_pg.py` / `run_sql_pg.py` are the retired PG versions,
+kept for reference/rollback only.
 
 ## Files
 
@@ -14,24 +23,32 @@ route is the `muse.db` tool inside an agent run.
   to this file (verified by diff against the cron projection).
 - `load_rows.py` — the landing loader (spec JSON on stdin; upserts, history
   archiving, epoch→date/hour conversion pinned to UTC; drops `_`-prefixed
-  columns).
+  columns). Writes to Turso via `turso_client.py`.
+- `turso_client.py` — the Turso transport (libsql HTTP pipeline) + the
+  SQLite DDL for all 28 landing tables (created on first use; the 20
+  migration-copied tables already exist). Token by BWS name only
+  (`turso.muse-mirror-rw-token`), resolved via `fleet secrets get` with an
+  automatic direct-BWS fallback when the broker's cached value is rejected.
+  Also provides the staging mode: `RDE_TURSO_URL=file:/path.db` runs the
+  identical SQL path against a local SQLite file.
 - `load_from_output.py` / `page_load.py` — feed saved oversized muse.db
   outputs into the loader without rows passing through agent generation;
   page_load prints the next keyset cursor.
-- `run_sql.py` — raw SQL files → Supabase (prunes, reconciliation counts).
-  Loads the egress proxy from `~/tools/secrets.d/mcpx-daemon.env` into the
-  supabase-exec subprocess env when missing (quota-recorder pattern).
+- `run_sql.py` — raw SQL files → Turso muse-mirror (prunes, reconciliation
+  counts). Translates the PG dialect the job body uses (`agent.mirror_*`
+  names, `now()`, `DATE 'YYYY-MM-DD'`) to SQLite/libsql.
 - `set_state.py` — records a unit's outcome in BOTH `state.json` and
-  `agent.mirror_export_state`.
+  `agent_mirror_export_state`.
 - `spec_m1..m8.json`, `spec_r1.json`, `spec_r2.json`, `spec_s5.json` —
   loader specs for the saved-output flow.
-- `schema.sql`, `schema2.sql` — DDL for all landing tables (applied).
-- `state.json` — per-unit watermarks/status (mirrored in Supabase).
+- `schema.sql`, `schema2.sql` — the original PG DDL for all landing tables
+  (historical; the live SQLite DDL lives in `turso_client.py`).
+- `state.json` — per-unit watermarks/status (mirrored in muse-mirror).
 - `progress/` — backfill logs per unit (build record).
 - `merge_s5.py` — S5 merge helper from the build (superseded by the JOB-BODY
   inline merge; kept for reference).
 
-## Landing tables (28, all in Supabase `agent` schema)
+## Landing tables (28, all in Turso `muse-mirror` as `agent_mirror_*`)
 
 Mirrors: mirror_scheduler_jobs (162), mirror_scheduler_job_runs,
 mirror_agent_agents, mirror_goals_goals (49), mirror_goals_updates,
@@ -107,9 +124,10 @@ every run.)
 
 ## Operations
 
-- Inspect health: `agent.mirror_export_state` in Supabase or `state.json`
-  (last_status / last_error per unit; failures are isolated per unit and
-  named in the run's report line).
+- Inspect health: `agent_mirror_export_state` in muse-mirror
+  (`turso db shell muse-mirror`) or `state.json` (last_status / last_error
+  per unit; failures are isolated per unit and named in the run's report
+  line).
 - Manual run: `cron.run runtime-db-export`. Cadence changes need Drew.
 - Steady-state cost (measured on the inaugural run, 2026-10-29):
   50,772,671 input tokens / 199,890 output across the run's 6-agent tree
