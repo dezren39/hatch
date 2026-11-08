@@ -447,6 +447,34 @@ json_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
     "$(json_esc "$NET_OK")" "$NET_LAT" "$(json_esc "$NIX_VERSION")" "$STORE_PATHS" "$PROFILE_PKGS"
 } >> "$JSONL"
 
+# --- Platform-shipped backup sync: detached launch, once per boot ---
+# Platform deployments replace the /opt trees wholesale at recycle
+# time, so the preservation sync (mirror /opt/muse/skills,
+# /opt/hatch/connectors, ~/docs + the /opt/hatch/bin manifest into
+# hatch-personal/platform-shipped-NOT-MINE) belongs here, at the end
+# of init — after every restore has run and the platform trees are
+# final for this boot — not in an agent-layer cron (Drew, 2026-11-08).
+# The sync takes ~2 min (bin hashing dominates), so it launches
+# DETACHED in the sysstat-retry setsid/nohup pattern and never blocks
+# init's exit. Guarded per boot by a marker file (same convention as
+# $MARKER): a retried init for the same boot does not relaunch it.
+# The script itself no-ops when nothing changed.
+# Output: ~/logs/platform-shipped-sync.log
+SYNC_MARKER=$LOG_DIR/.platform-sync-boot-id
+SYNC_LOG=$LOG_DIR/platform-shipped-sync.log
+SYNC_SCRIPT=/home/hatch/hatch-personal/scripts/sync-platform-shipped.sh
+if [ -x "$SYNC_SCRIPT" ]; then
+  if [ -f "$SYNC_MARKER" ] && [ "$(cat "$SYNC_MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: platform-shipped sync already launched for boot $BOOT_ID, skipping" >> "$LOG"
+  else
+    echo "$BOOT_ID" > "$SYNC_MARKER"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: launching platform-shipped sync detached (log: $SYNC_LOG)" >> "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] platform-sync: launched by init for boot $BOOT_ID" >> "$SYNC_LOG"
+    # 9>&- : the detached child must not inherit (and hold) init's flock fd.
+    setsid nohup bash "$SYNC_SCRIPT" >>"$SYNC_LOG" 2>&1 </dev/null 9>&- &
+  fi
+fi
+
 if [ "$FAILURES" -eq 0 ]; then
   echo "$BOOT_ID" > "$MARKER"   # only mark clean boots; failures retry next poll
   exit 0
