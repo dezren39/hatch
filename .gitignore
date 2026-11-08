@@ -343,3 +343,17 @@ tools/handoff.sh
 /fail-*.err
 /runs-*.err
 /hb-*.md
+
+# review 2026-11-08: root fleet-lane scratch (quota-provider module copies
+# dropped at root — they import ../types.js, canonical home is the opencode
+# repo, not hatch; one-off turso query script; mail/usage probe scripts)
+/claude.ts
+/cline-pass.ts
+/command-code.ts
+/meta.ts
+/opencode-go.ts
+/opendesign.ts
+/turso.ts
+/turso_q.py
+/probe.mjs
+/probe_usage_state.mjs
