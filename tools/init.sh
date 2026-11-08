@@ -292,15 +292,17 @@ if [ -x "$RS_DIR/install-sampler-units.sh" ]; then
   fi
 fi
 
-# --- sysstat collector: reinstall package + systemd unit if missing ---
-# Same pattern as above; the unit + installer live in hatch-personal
-# (scripts/sysstat). sadc samples every 2 min to ~/logs/sysstat (the
+# --- sysstat collector: reinstall package + systemd units if missing ---
+# Same pattern as above; the units + installer live in hatch-personal
+# (scripts/sysstat): sysstat-collector (sadc) + pidstat-collector
+# (per-PID layer of the telemetry rollup, code#6759 slice 1).
+# sadc samples every 2 min to ~/logs/sysstat (the
 # distro's own /var/log/sysstat does not survive recycles). Complements
 # the resource sampler with CPU split, disk and network stats (Drew,
 # 2026-11-04). The apt reinstall can take a few minutes, hence 600s.
 SS_DIR=/home/hatch/hatch-personal/scripts/sysstat
 if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
-  if ! systemctl is-active --quiet sysstat-collector.service 2>/dev/null; then
+  if ! systemctl is-active --quiet sysstat-collector.service 2>/dev/null || ! systemctl is-active --quiet pidstat-collector.service 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sysstat collector" >> "$LOG"
     # Apt-lock contention is NOT an init failure (2026-11-04): the sandbox
     # platform's post-boot os-intent replay holds /var/lib/apt/lists/lock
@@ -330,15 +332,30 @@ if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
     if [ "$SS_EXIT" -ne 0 ]; then
       if grep -q "Could not get lock\|Unable to lock directory" "$SS_TMP"; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt lock held by another process — not counted as a failure; detached retry queued)" >> "$LOG"
-        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
+        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service && systemctl is-active --quiet pidstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
       elif [ "$SS_EXIT" -eq 124 ] || grep -q "Failed to fetch\|Some index files failed to download" "$SS_TMP"; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt fetch stalled or failed — mirror/network weather, exit $SS_EXIT; not counted as a failure; detached retry queued)" >> "$LOG"
-        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
+        setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service && systemctl is-active --quiet pidstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
       else
         FAILURES=$((FAILURES+1))
       fi
     fi
     rm -f "$SS_TMP"
+  fi
+fi
+
+# --- tree-size cache writer: reinstall systemd unit if missing ---
+# Same pattern as above; the unit + installer live in hatch-personal
+# (scripts/tree-size). The telemetry rollup's directory-usage layer
+# (code#5925 row 5, code#6759 tree-size slice): throttled detached du
+# per watched tree -> value+timestamp cache files in ~/logs/tree-size,
+# consumed via tree-size-read.sh with the age attached. No apt step
+# (du is coreutils), so this restore is fast and failures count.
+TS_DIR=/home/hatch/hatch-personal/scripts/tree-size
+if [ -x "$TS_DIR/install-tree-size-units.sh" ]; then
+  if ! systemctl is-active --quiet tree-size-writer.service 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring tree-size cache writer" >> "$LOG"
+    timeout 120 "$TS_DIR/install-tree-size-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
   fi
 fi
 
