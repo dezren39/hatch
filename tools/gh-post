@@ -150,7 +150,7 @@ def laptop_paperwork(args: list[str], body_file: Path) -> tuple[bool, str]:
     if ship.returncode != 0:
         return (False, f"body transfer to laptop failed: {ship.stderr[-200:]}")
     remote_args = [a if a != str(body_file) else remote_body for a in args]
-    r = run([LAPTOP_SSH, "python3 " + PAPERWORK + " " + " ".join(remote_args)])
+    r = run([LAPTOP_SSH, "python3 " + PAPERWORK + " " + " ".join(shlex.quote(a) for a in remote_args)])
     out = ((r.stdout or "") + (r.stderr or "")).strip()
     run([LAPTOP_SSH, f"rm -f {remote_body}"])
     return (r.returncode == 0, out)
