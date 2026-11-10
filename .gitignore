@@ -357,3 +357,7 @@ tools/handoff.sh
 /turso_q.py
 /probe.mjs
 /probe_usage_state.mjs
+
+# review 2026-11-10: root runtime DB placeholder (0-byte muse.db,
+# machine-created, no data)
+/muse.db
