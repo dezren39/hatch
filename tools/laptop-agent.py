@@ -34,6 +34,21 @@ bounds the WHOLE call, at every layer.
     a request whose connection dies mid-flight is dropped from the
     pool, and the client's wait on the broker socket is bounded by
     the same deadline, expiry of which restarts the broker.
+
+Loud-failure semantics (silence audit, 2026-11-10, code#5343): a
+failed call never looks like an empty success.
+
+  * Transport failures on the direct path (proxy down, CONNECT
+    refused, daemon unreachable) exit 1 with a named one-line
+    `laptop-agent: transport error: ...` on stderr — no tracebacks.
+  * Output cut at the daemon's 1 MiB/stream capture cap is announced
+    on stderr (`output truncated ... (tail kept)`); it used to be
+    dropped silently, so partial output read as complete.
+  * `exec-batch` exits with the worst per-command exit code (spawn
+    error counts as 1, timeout as 124); it used to always exit 0.
+  * A brokered reply that took >10 s beyond the daemon's own
+    execution time is announced on stderr as a transport-layer wait,
+    so a parked caller is distinguishable from a long remote command.
 """
 import json
 import os
@@ -238,6 +253,7 @@ def _broker_roundtrip(method, path, body, trip=None):
     import subprocess
     for attempt in (1, 2):
         s = None
+        t_start = time.time()
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             wait = _remaining()
@@ -265,6 +281,30 @@ def _broker_roundtrip(method, path, body, trip=None):
                 data += chunk
             s.close()
             obj = json.loads(data)
+            # A reply wait far beyond a warm round trip (~0.4 s) with
+            # no daemon-side execution to explain it means the caller
+            # sat parked in the transport — a wedged broker thread, a
+            # tunnel reconnect, or (historically) a permission wait.
+            # Surface it once, on stderr, so the wait is never
+            # mistaken for the remote command running (code#5343,
+            # 2026-11-10). /exec replies carry per-command duration,
+            # which is subtracted: a long REMOTE command is not a
+            # transport wait and must not be labelled one.
+            waited = time.time() - t_start
+            if waited > 10:
+                remote_ms = None
+                try:
+                    results = obj["body"].get("results") or []
+                    remote_ms = sum(r.get("duration_ms") or 0
+                                    for r in results)
+                except Exception:
+                    remote_ms = None
+                if remote_ms is None or waited * 1000 > remote_ms + 5000:
+                    sys.stderr.write(
+                        f"laptop-agent: note: this call waited "
+                        f"{waited:.0f}s for its reply, beyond the "
+                        f"time the laptop spent executing — the wait "
+                        f"was in the broker/tunnel layer\n")
             return obj["status"], obj["body"]
         except CallTimeout:
             if s is not None:
@@ -332,20 +372,30 @@ def request(method, path, body=None):
                 return obj
         token = TOKEN_FILE.read_text().strip()
         wait = _remaining()
-        conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
-                                  timeout=660 if wait is None
-                                  else max(1.0, wait))
-        payload = json.dumps(body) if body is not None else None
-        conn.request(method, path, body=payload, headers={
-            "X-Agent-Token": token,
-            "X-Trip-Id": trip,
-            "Content-Type": "application/json",
-        })
-        resp = conn.getresponse()
-        status = resp.status
-        data = resp.read()
-        conn.close()
-        obj = json.loads(data or b"{}")
+        try:
+            conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
+                                      timeout=660 if wait is None
+                                      else max(1.0, wait))
+            payload = json.dumps(body) if body is not None else None
+            conn.request(method, path, body=payload, headers={
+                "X-Agent-Token": token,
+                "X-Trip-Id": trip,
+                "Content-Type": "application/json",
+            })
+            resp = conn.getresponse()
+            status = resp.status
+            data = resp.read()
+            conn.close()
+            obj = json.loads(data or b"{}")
+        except CallTimeout:
+            raise
+        except Exception as e:
+            # Transport failure on the direct path (proxy down, CONNECT
+            # refused, daemon unreachable): fail LOUD with a named
+            # one-line error — never a raw traceback, never silence
+            # (code#5343 silence audit, 2026-11-10).
+            sys.exit(f"laptop-agent: transport error: "
+                     f"{type(e).__name__}: {e}")
         if status >= 400:
             sys.exit(f"laptop-agent: HTTP {status}: "
                      f"{obj.get('error', obj)}")
@@ -450,7 +500,27 @@ def main():
         _set_deadline(body.get("timeout_s", 120))
 
         def _batch():
-            print(json.dumps(request("POST", "/exec", body), indent=1))
+            out = request("POST", "/exec", body)
+            print(json.dumps(out, indent=1))
+            # Fail LOUD (code#5343 silence audit, 2026-11-10): a batch
+            # whose commands failed must not exit 0 — the caller would
+            # read empty output as success. Exit with the worst exit
+            # code; a command that could not run at all counts as 1.
+            worst = 0
+            for r in out.get("results", []):
+                if r.get("truncated"):
+                    sys.stderr.write(
+                        "laptop-agent: warning: a command's output was "
+                        "truncated at the 1 MiB/stream capture cap "
+                        "(tail kept)\n")
+                if r.get("error"):
+                    worst = max(worst, 1)
+                elif r.get("timeout"):
+                    worst = max(worst, TIMEOUT_EXIT)
+                elif r.get("exit"):
+                    worst = max(worst, r["exit"])
+            if worst:
+                sys.exit(worst)
         _run_guarded(_batch)
         return
 
@@ -495,6 +565,10 @@ def main():
             r = out["results"][0]
             sys.stdout.write(r.get("stdout", ""))
             sys.stderr.write(r.get("stderr", ""))
+            if r.get("truncated"):
+                sys.stderr.write(
+                    "laptop-agent: warning: output truncated at the "
+                    "1 MiB/stream capture cap (tail kept)\n")
             if r.get("error"):
                 sys.stderr.write(f"laptop-agent: {r['error']}\n")
             if r.get("timeout"):

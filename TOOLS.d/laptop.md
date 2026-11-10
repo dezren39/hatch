@@ -178,3 +178,67 @@
   (login shell), whose profile emits a window-title escape on some
   paths; harmless in captured output.
 - Migration inventory + residuals: workspace/goals/keep-the-four-repos-healthy/hidden_files/laptop-ssh-migration-inventory-2026-11-04.md
+
+## Timeout enforcement — FIXED 2026-11-10 (code#5343)
+Caller deadlines now bound the WHOLE laptop call at every layer.
+Before: `timeout 30` around a wrapper call could run 18 minutes and
+ALWAYS orphaned the remote command — /exec children ran in the
+daemon's own process group (subprocess.run, no session), the timeout
+killed only the group leader (grandchildren survived reparented),
+nothing cancelled the remote work when the client died, broker
+threads parked up to 660 s on wedged tunnels, and the shim's
+daemon-side cap was 600 s regardless of the caller's budget.
+Semantics as fixed:
+- Daemon: every /exec command runs in its OWN process group
+  (start_new_session); the WHOLE group (grandchildren included) is
+  TERM-then-KILLed when any of these fires: timeout_s, an explicit
+  POST /exec/<trip>/cancel, or the request connection dying
+  (half-close watchdog in the handler — covers SIGKILLed clients).
+  Output is drained incrementally, so a killed grandchild holding
+  the pipes can no longer wedge the reader. Detached /jobs are
+  unchanged: they survive a graceful client exit by design; their
+  kill endpoint escalates TERM→KILL after 5 s and KILLS THE WHOLE
+  GROUP only if the TERM was deferred to — a process that ignores
+  TERM entirely still takes the full escalation window (measured:
+  poll-timeout test needed ~8 s settle for `bash -lc 'sleep N'` jobs).
+- Client (laptop-agent.py): --timeout S arms a local backstop at
+  S + 15 s (SIGALRM) and exits 124 (GNU timeout's code) even if the
+  transport wedges; external SIGTERM/SIGINT are CAUGHT — the client
+  cancels the in-flight exec (or kills the polled job) over a fresh
+  direct CONNECT with a 3 s budget, then exits 124. If the cancel is
+  not acknowledged it KILLs the broker (pid file broker.pid) so the
+  pool restarts clean. poll has a reply watchdog thread for the case
+  where a C-level recv defers the Python signal handler. Env
+  LAPTOP_AGENT_DEADLINE_S (seconds) tightens exec's daemon-side
+  timeout: the shim sets it automatically when its parent is GNU
+  timeout(1), parsed from /proc/$PPID/cmdline — so via the shim the
+  daemon itself reaps the command at the caller's deadline even if
+  every signal path fails.
+- Broker: per-request socket timeout from the caller's remaining
+  deadline (no more flat 660 s); a timed-out/errored connection is
+  closed, never repooled; a 0.2 s watchdog notices a client that
+  vanished mid-request (unix-socket EOF) and hard-closes its tunnel,
+  which both frees the handler thread and triggers the daemon's
+  disconnect reap — this is what bounds even a SIGKILL. Broker
+  writes ~/.cache/laptop-agent/broker.pid.
+- Real-SSH path (laptop-ssh-real.sh): `timeout` bounds ONLY the
+  local wait (rc 124, verified) — the remote command still runs to
+  completion server-side because sshd owns it and nothing in the
+  SSH protocol cancels it; multiplexed masters can also outlive the
+  killed front-end. Prefer the agent path whenever a deadline
+  matters; use LAPTOP_SSH_REAL=1 only for the recovery/forwards/
+  stdin shapes it exists for.
+- Proof (2026-11-10, live): sleep-300-class hangs — client
+  --timeout 5: 5.5 s rc 124, no leftover (incl. `sleep & wait`
+  grandchild case); external `timeout 5`: 5.1 s rc 124, no leftover;
+  external `timeout -s KILL 5`: client rc 137 at 5.0 s, remote reaped
+  within ~2 s by broker-watchdog + daemon disconnect reap; shim
+  under `timeout 5`: 5.1 s rc 124, no leftover; poll of a detached
+  job under `timeout 5`: rc 124, job done, no leftover after the
+  TERM→KILL escalation; NO_BROKER direct path same as broker path;
+  exec-batch timeout result + no leftover. Regressions: warm call
+  0.5–0.9 s, cold (broker restart) 1.35 s, remote exit codes 3 and
+  42 propagate exactly (distinct from timeout's 124), pool answers
+  immediately after every kill. Backups: *.bak-20261110-timeout-fix
+  beside each file (laptop daemon: laptop_agent.py.bak-20261110-
+  timeout-fix + .bak2-20261110).
