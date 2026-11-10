@@ -27,6 +27,17 @@ leg where they occur; they never fall through to the App or the outbox.
 Usage:
   gh-post comment --repo owner/name (--issue N | --pr N) --body-file F
   gh-post create  --repo owner/name --title T --body-file F [--label L ...]
+  gh-post check   --body-file F        (pre-post secret scan only)
+
+Pre-post secret scan (code#7072, 2026-11-09): every comment/create body is
+scanned BEFORE any posting leg. Credential-shaped text — env-dump shapes
+(many KEY=value lines), known token prefixes, credential KEY=value lines,
+private-key blocks — blocks the post with exit 4 and a finding list that
+names the pattern and line, never the value. Origin: 2026-11-07 lane
+code-e posted an env dump as a comment via an unquoted heredoc (shell
+expanded $VARS from a body file built with <<EOF). Post bodies must be
+built with quoted heredocs (<<'EOF') or body files only; gh-post is the
+sanctioned posting path and this scan is its structural backstop.
 
 Test hooks (env): GH_POST_SKIP_USER=1 skips leg 1 as if rate-limited;
 GH_POST_SKIP_APP=1 skips leg 2 as if it failed. Both together drive the
@@ -58,6 +69,61 @@ LIMIT_RE = re.compile(
     re.IGNORECASE,
 )
 URL_RE = re.compile(r"https://github\.com/\S+")
+
+# --- Pre-post secret scan (code#7072) -------------------------------------
+# Findings name the pattern class and line number only — never the value.
+TOKEN_PREFIX_RES = [
+    ("github-token", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
+    ("github-pat", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
+    ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("openai-style-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
+    ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
+    ("private-key-block", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----")),
+    ("bearer-token", re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{20,}")),
+]
+CRED_KEY_RE = re.compile(
+    r"^\s*(?:export\s+)?([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|"
+    r"CREDENTIAL|PRIVATE|AUTH)[A-Za-z0-9_]*)\s*=\s*(\S.{7,})$"
+)
+ENV_LINE_RE = re.compile(r"^\s*(?:export\s+)?[A-Z_][A-Z0-9_]{2,}=\S+")
+PLACEHOLDER_RE = re.compile(
+    r"^(?:<[^>]*>|\.\.\.|…|\*+|x+|REDACTED|redacted|example|EXAMPLE|"
+    r"your[-_ ].*|changeme|CHANGE_ME|\"[^\"]*\"|'[^']*')$"
+)
+ENV_DUMP_THRESHOLD = 5
+
+
+def scan_body(text: str) -> list[str]:
+    """Return findings for credential-shaped body text (values redacted)."""
+    findings: list[str] = []
+    env_lines = 0
+    for n, line in enumerate(text.splitlines(), 1):
+        for name, rx in TOKEN_PREFIX_RES:
+            if rx.search(line):
+                findings.append(f"line {n}: {name}")
+        m = CRED_KEY_RE.match(line)
+        if m and not PLACEHOLDER_RE.match(m.group(2).strip()):
+            findings.append(f"line {n}: credential assignment ({m.group(1)}=…)")
+        if ENV_LINE_RE.match(line):
+            env_lines += 1
+    if env_lines >= ENV_DUMP_THRESHOLD:
+        findings.append(
+            f"env-dump shape: {env_lines} KEY=value lines "
+            f"(threshold {ENV_DUMP_THRESHOLD})"
+        )
+    return findings
+
+
+def enforce_scan(body_file: Path) -> None:
+    findings = scan_body(body_file.read_text(errors="replace"))
+    if findings:
+        print("gh-post: BLOCKED by pre-post secret scan (code#7072):",
+              file=sys.stderr)
+        for f in findings:
+            print(f"  - {f}", file=sys.stderr)
+        print("gh-post: remove the credential-shaped text and re-run; "
+              "values are never printed by this scan.", file=sys.stderr)
+        raise SystemExit(4)
 
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:
@@ -249,11 +315,23 @@ def main() -> int:
     pi.add_argument("--title", required=True)
     pi.add_argument("--body-file", required=True)
     pi.add_argument("--label", action="append", default=[])
+    pk = sub.add_parser("check")
+    pk.add_argument("--body-file", required=True)
     args = ap.parse_args()
 
     body_file = Path(args.body_file)
     if not body_file.exists():
         die(f"body file not found: {body_file}")
+    if args.cmd == "check":
+        findings = scan_body(body_file.read_text(errors="replace"))
+        if findings:
+            print("BLOCKED: credential-shaped text found:")
+            for f in findings:
+                print(f"  - {f}")
+            return 4
+        print("clean: no credential-shaped text found")
+        return 0
+    enforce_scan(body_file)
     skip_user = os.environ.get("GH_POST_SKIP_USER") == "1"
     skip_app = os.environ.get("GH_POST_SKIP_APP") == "1"
 
