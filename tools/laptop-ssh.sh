@@ -39,6 +39,16 @@
 #     that arrives promptly (0.2 s probe; a deliberately slow producer
 #     is the one miss — use LAPTOP_SSH_REAL=1 for those).
 #
+# Timeout semantics (2026-11-10, code#5343): every delegated path ends
+# in `exec`, so an outer `timeout N`'s SIGTERM reaches the agent client
+# directly; the client catches it, cancels the remote command's whole
+# process group via the daemon (/cancel), and exits 124. The shim's
+# own LAPTOP_SSH_TIMEOUT (default 600) is the DAEMON-side cap for the
+# remote command; the client's local backstop is that + 15 s. The
+# real-SSH fallback path cannot cancel remotely (sshd owns the remote
+# process) — `timeout` there bounds only the local wait; see
+# TOOLS.d/laptop.md.
+#
 # The preserved original SSH implementation is
 # ~/tools/laptop-ssh-real.sh (byte-identical to the pre-retirement
 # shim, md5 95f647590274779bcaef7ea9a66f0670).
@@ -59,6 +69,32 @@ case "$1" in
 esac
 
 cmd="$*"
+
+# If our parent is GNU timeout(1) (e.g. `timeout 30 laptop-ssh.sh ...`),
+# read its -t budget from /proc and export it so the agent client hands
+# the SAME deadline to the daemon — the remote process group is then
+# reaped at the deadline even if the signal path fails. Detection is
+# best-effort and silent: any miss just keeps the old signal-only path.
+if [ -r "/proc/$PPID/cmdline" ]; then
+  _pcomm=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null)
+  case "$_pcomm" in
+    *timeout*)
+      _t=$(printf '%s' "$_pcomm" | grep -oE 'timeout[^ ]* +(-t +)?[0-9]+(\.[0-9]+)?[smhd]?' | grep -oE '[0-9]+(\.[0-9]+)?[smhd]?$' | head -1)
+      case "$_t" in
+        *s) _secs=${_t%s} ;;
+        *m) _secs=$(awk -v v="${_t%m}" 'BEGIN{print v*60}') ;;
+        *h) _secs=$(awk -v v="${_t%h}" 'BEGIN{print v*3600}') ;;
+        *d) _secs=$(awk -v v="${_t%d}" 'BEGIN{print v*86400}') ;;
+        *) _secs=$_t ;;
+      esac
+      if [ -n "${_secs:-}" ]; then
+        export LAPTOP_AGENT_DEADLINE_S="$_secs"
+      fi
+      unset _t _secs
+      ;;
+  esac
+  unset _pcomm
+fi
 
 # --- Script-on-stdin: the command is a shell/interpreter reading its
 # script from stdin. Convert: the script text becomes the shell string

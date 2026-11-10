@@ -15,9 +15,17 @@ API (JSON):
   GET  /jobs/<id>?out_off&err_off -> {state, exit, stdout, stderr,
                                       out_next, err_next, duration_ms}
   POST /jobs/<id>/kill            -> {ok, state}
+  POST /exec/<trip>/cancel        -> {ok, cancelled} (POST /cancel
+                                      {trip} is the legacy spelling)
 
 Job stdout/stderr spool to ~/.local/state/laptop-agent/jobs/<id>/ so a
 daemon restart does not lose results. Finished jobs reaped after 24h.
+
+Timeout semantics (2026-11-10): every /exec command runs in its OWN
+process group (start_new_session) and the whole group is killed on
+timeout, on an explicit /cancel for its trip, or when the client
+connection dies mid-exec — a caller-side timeout therefore never
+leaves orphan processes behind on the laptop, grandchildren included.
 """
 import hashlib
 import hmac
@@ -26,6 +34,7 @@ import os
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -61,6 +70,8 @@ TOKEN = TOKEN_FILE.read_text().strip()
 JOBS = {}                    # job_id -> dict
 JOBS_LOCK = threading.Lock()
 TRIPS_FILE = STATE_DIR / "trips.jsonl"
+EXEC_PROCS = {}              # trip -> set[Popen] currently running for /exec
+EXEC_PROCS_LOCK = threading.Lock()
 
 
 def log_trip(trip, kind, cmd_str, duration_ms, exit_code, out_bytes,
@@ -96,7 +107,53 @@ def tail_bytes(data: bytes, cap: int):
     return data[-cap:], True
 
 
-def run_one(spec, timeout_s):
+def kill_group(proc, grace_s=2.0):
+    """TERM a process group, escalate to KILL after grace_s. The exec
+    children run with start_new_session=True, so proc.pid is the pgid
+    and this reaches grandchildren that a plain proc.kill() misses."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except OSError:
+        pass
+    deadline = time.time() + grace_s
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            break
+        time.sleep(0.05)
+    if proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        pass
+
+
+def _drain(stream, buf):
+    try:
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                break
+            buf.append(chunk)
+    except (OSError, ValueError):
+        pass
+
+
+def run_one(spec, timeout_s, trip=None, cancel_event=None):
+    """Run one command in its own process group, capturing output.
+
+    The group dies when ANY of these fires: timeout_s expires, the
+    cancel_event is set (explicit /cancel or the client connection
+    died — see Handler._client_gone), or the watchdog notices.
+    Bytes are drained incrementally so a killed grandchild holding
+    the pipes open can never wedge the reader (the classic
+    subprocess.run+timeout hang)."""
     cwd = spec.get("cwd") or str(Path.home())
     env = dict(os.environ)
     env.update(spec.get("env") or {})
@@ -108,31 +165,74 @@ def run_one(spec, timeout_s):
         cmd_str = " ".join(argv)
     t0 = time.time()
     try:
-        p = subprocess.run(argv, cwd=cwd, env=env, capture_output=True,
-                           timeout=timeout_s)
-        out, out_tr = tail_bytes(p.stdout, MAX_OUT)
-        err, err_tr = tail_bytes(p.stderr, MAX_OUT)
-        return {"exit": p.returncode,
-                "stdout": out.decode("utf-8", "replace"),
-                "stderr": err.decode("utf-8", "replace"),
-                "duration_ms": int((time.time() - t0) * 1000),
-                "truncated": out_tr or err_tr,
-                "_cmd": cmd_str, "_out_bytes": len(p.stdout),
-                "_err_bytes": len(p.stderr)}
-    except subprocess.TimeoutExpired as e:
-        return {"exit": None, "timeout": True,
-                "stdout": (e.stdout or b"").decode("utf-8", "replace"),
-                "stderr": (e.stderr or b"").decode("utf-8", "replace"),
-                "duration_ms": int((time.time() - t0) * 1000),
-                "truncated": False,
-                "_cmd": cmd_str, "_out_bytes": len(e.stdout or b""),
-                "_err_bytes": len(e.stderr or b"")}
+        proc = subprocess.Popen(argv, cwd=cwd, env=env,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                start_new_session=True)
     except Exception as e:  # cwd missing, argv[0] missing, ...
         return {"exit": None, "error": f"{type(e).__name__}: {e}",
                 "stdout": "", "stderr": "",
                 "duration_ms": int((time.time() - t0) * 1000),
                 "truncated": False,
                 "_cmd": cmd_str, "_out_bytes": 0, "_err_bytes": 0}
+    if trip:
+        with EXEC_PROCS_LOCK:
+            EXEC_PROCS.setdefault(trip, set()).add(proc)
+    out_parts, err_parts = [], []
+    t_out = threading.Thread(target=_drain,
+                             args=(proc.stdout, out_parts), daemon=True)
+    t_err = threading.Thread(target=_drain,
+                             args=(proc.stderr, err_parts), daemon=True)
+    t_out.start()
+    t_err.start()
+    timed_out = False
+    cancelled = False
+    deadline = time.time() + timeout_s
+    try:
+        while True:
+            if proc.poll() is not None:
+                break
+            if cancel_event is not None and cancel_event.is_set():
+                cancelled = True
+                kill_group(proc)
+                break
+            if time.time() >= deadline:
+                timed_out = True
+                kill_group(proc)
+                break
+            time.sleep(0.05)
+    finally:
+        if trip:
+            with EXEC_PROCS_LOCK:
+                s = EXEC_PROCS.get(trip)
+                if s is not None:
+                    s.discard(proc)
+                    if not s:
+                        EXEC_PROCS.pop(trip, None)
+    # Collect whatever the pipes still hold, but never wait forever:
+    # a detached grandchild can keep a pipe fd open after the group
+    # leader dies; the capture cap makes a short grace sufficient.
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
+    out = b"".join(out_parts)
+    err = b"".join(err_parts)
+    out_t, out_tr = tail_bytes(out, MAX_OUT)
+    err_t, err_tr = tail_bytes(err, MAX_OUT)
+    result = {"exit": proc.returncode,
+              "stdout": out_t.decode("utf-8", "replace"),
+              "stderr": err_t.decode("utf-8", "replace"),
+              "duration_ms": int((time.time() - t0) * 1000),
+              "truncated": out_tr or err_tr,
+              "_cmd": cmd_str, "_out_bytes": len(out),
+              "_err_bytes": len(err)}
+    if timed_out:
+        result["exit"] = None
+        result["timeout"] = True
+    if cancelled:
+        result["exit"] = None
+        result["timeout"] = True
+        result["cancelled"] = True
+    return result
 
 
 def job_dir(job_id):
@@ -202,6 +302,29 @@ class Handler(BaseHTTPRequestHandler):
         given = self.headers.get("X-Agent-Token", "")
         return hmac.compare_digest(given, TOKEN)
 
+    def _client_gone(self):
+        """True once the client connection has died (EOF/error).
+
+        ThreadingHTTPServer handlers never poll the socket while a
+        /exec runs, so a client killed by an outer `timeout` used to
+        leave its command running to the daemon-side cap — or longer,
+        for grandchildren. Closing the write side makes the peer see
+        FIN at once; the handler thread then re-checks between drain
+        slices. Used as run_one's disconnect watchdog trigger."""
+        try:
+            self.connection.setblocking(False)
+            try:
+                data = self.connection.recv(1, socket.MSG_PEEK)
+                return data == b""
+            except BlockingIOError:
+                return False
+            except OSError:
+                return True
+            finally:
+                self.connection.setblocking(True)
+        except OSError:
+            return True
+
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n) if n else b"{}"
@@ -249,9 +372,32 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "cmds required"})
             if not SEMA.acquire(timeout=5):
                 return self._send(503, {"error": "busy"})
+            cancel_event = threading.Event()
+
+            def watch_disconnect(ev=cancel_event):
+                # Poll the socket at 4 Hz while the exec runs; check
+                # for cancellation events too (cheap flag).
+                while not ev.is_set():
+                    if self._client_gone():
+                        ev.set()
+                        with EXEC_PROCS_LOCK:
+                            procs = list(EXEC_PROCS.get(trip, ()))
+                        for p in procs:
+                            if p.poll() is None:
+                                kill_group(p)
+                        return
+                    ev.wait(0.25)
+
+            watcher = threading.Thread(target=watch_disconnect,
+                                       daemon=True)
+            watcher.start()
             try:
-                results = [run_one(c, timeout) for c in cmds]
+                results = [run_one(c, timeout, trip=trip,
+                                   cancel_event=cancel_event)
+                           for c in cmds]
             finally:
+                cancel_event.set()
+                watcher.join(timeout=1)
                 SEMA.release()
             for r in results:
                 cmd_str = r.pop("_cmd", "")
@@ -259,7 +405,27 @@ class Handler(BaseHTTPRequestHandler):
                 err_b = r.pop("_err_bytes", 0)
                 log_trip(trip, "exec", cmd_str, r.get("duration_ms"),
                          r.get("exit"), out_b, err_b)
-            return self._send(200, {"results": results})
+            try:
+                return self._send(200, {"results": results})
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # client already gone; the work is done/killed
+            return
+        if path == "/cancel" or (path.startswith("/exec/")
+                                  and path.endswith("/cancel")):
+            body = self._body()
+            trip = (body.get("trip") or self.headers.get("X-Trip-Id")
+                    or (path.split("/")[2]
+                        if path.startswith("/exec/") else None))
+            if not isinstance(trip, str) or not trip:
+                return self._send(400, {"error": "trip required"})
+            with EXEC_PROCS_LOCK:
+                procs = list(EXEC_PROCS.get(trip, ()))
+            killed = 0
+            for p in procs:
+                if p.poll() is None:
+                    kill_group(p)
+                    killed += 1
+            return self._send(200, {"ok": True, "cancelled": killed})
         if path == "/jobs":
             body = self._body()
             trip = self.headers.get("X-Trip-Id") or body.get("trip")
