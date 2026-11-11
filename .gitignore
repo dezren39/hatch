@@ -361,3 +361,10 @@ tools/handoff.sh
 # review 2026-11-10: root runtime DB placeholder (0-byte muse.db,
 # machine-created, no data)
 /muse.db
+
+# review 2026-11-11: root fleet-lane scratch (one-off quota probe script,
+# one-off task SQL query, lane PR-body draft, stray 0-byte file)
+/qx.py
+/t11349.sql
+/lane-any-d-14924-pr-body.md
+/text
