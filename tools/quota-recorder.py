@@ -47,6 +47,7 @@ No LLM involved. Always exits 0; failures are recorded as data.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -60,7 +61,18 @@ SUBSCRIPTION_STATUS = "/opt/hatch/bin/subscription-status"
 TURSO_URL = "https://fleet-platform-dezren39.aws-us-east-1.turso.io"
 TURSO_TOKEN_SECRET = "turso.fleet-platform-rw-token"
 TABLE = "agent_quota_records"
-FLEET = os.path.expanduser("~/tools/bin/fleet")
+def _resolve_fleet():
+    """First working fleet binary on this host: the layout differs per
+    host (sandbox: ~/tools/bin/fleet; laptop: ~/.local/bin/fleet), so a
+    single hard-coded path silently breaks the other host (#6830)."""
+    for cand in ("~/tools/bin/fleet", "~/.local/bin/fleet"):
+        p = os.path.expanduser(cand)
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return shutil.which("fleet") or os.path.expanduser("~/tools/bin/fleet")
+
+
+FLEET = _resolve_fleet()
 CHUNK = 200
 
 
