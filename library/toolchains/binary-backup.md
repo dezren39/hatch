@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/doc/backups/binary-backup.md — this hatch copy is kept as the historical original (docs migration, code issue #5976).
+
 # Binary backup manifest
 
 Generated 2026-10-21. Drew's rule (2026-10-21): the toolchain **backup set includes the binaries themselves**, not just docs and secrets — including the Bitwarden CLI (`bws`) in addition to the Bitwarden secrets it guards.

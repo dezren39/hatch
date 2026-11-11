@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/doc/backups/muse-backup.md — this hatch copy is kept as the historical original (docs migration, code issue #5976).
+
 # muse-backup
 
 Status: tentative, first draft 2026-10-21.

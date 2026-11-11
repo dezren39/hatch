@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/doc/backups/backup-process-2026-10-21.md — this hatch copy is kept as the historical original (docs migration, code issue #5976).
+
 # Backup process + ledger — 2026-10-21
 
 ## The process
