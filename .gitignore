@@ -368,3 +368,9 @@ tools/handoff.sh
 /t11349.sql
 /lane-any-d-14924-pr-body.md
 /text
+
+# review 2026-11-12: root fleet-lane scratch (two stray 0-byte files from
+# shell/quoting accidents, one generated board-placement report JSON)
+/89%
+/u64::MAX
+/board_place2_report.json
