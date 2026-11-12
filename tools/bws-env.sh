@@ -9,10 +9,14 @@
 # The token itself lives in ~/.config/bitwarden/access-token (600).
 # Never echo it, never commit it, never put it in chat.
 
-# The bws binary lives in ~/tools/bin, which is not on every shell's PATH
-# (cron workers have missed it — Archer Slack review failed 2026-10-27).
-# Make this loader self-sufficient.
-export PATH="$HOME/tools/bin:$PATH"
+# bws resolution (code#6829 / code#7931): bws is resolved from PATH —
+# on the laptop that is the system bws; ~/tools/bin/bws exists only in
+# the sandbox layout. Prepend ~/tools/bin when it exists so cron
+# workers with a thin PATH still find that copy (cron workers have
+# missed bws on PATH — Archer Slack review failed 2026-10-27).
+if [[ -x "$HOME/tools/bin/bws" ]]; then
+  export PATH="$HOME/tools/bin:$PATH"
+fi
 
 _BWS_TOKEN_FILE="${HOME}/.config/bitwarden/access-token"
 
