@@ -62,6 +62,21 @@ fi
   fi
 } 2>/dev/null || true
 
+# --- Location-aware fleet init (2026-11-11, code#6770 / task 14633) ---
+# The sandbox carries a [host] manifest in ~/.config/fleet/fleet.toml
+# (location "sandbox", init_mode "spawn", role proxy). This is the
+# pinned call site from the #6770 deploy sequence: FLEET_LOCATION
+# makes the caller's assumption explicit, belt-and-braces alongside
+# the manifest. In spawn mode `fleet init` is the strict no-op proxy
+# ensure when the broker above is already running, and spawns it
+# when it is not. Best-effort: output silenced, never changes the
+# exit contract.
+{
+  if [ -x /home/hatch/tools/fleet ]; then
+    FLEET_LOCATION=sandbox /home/hatch/tools/fleet init >/dev/null 2>&1 || true
+  fi
+} 2>/dev/null || true
+
 # --- fleet binary links (2026-11-04, code#5343) ---
 # ~/tools/bin/fleet is the PATH entry point for the fleet multicall
 # binary, and repo-queue is its argv0 alias. Recreate either link if it
