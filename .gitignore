@@ -374,3 +374,9 @@ tools/handoff.sh
 /89%
 /u64::MAX
 /board_place2_report.json
+
+# review 2026-11-13: root machine-generated logs (fleet census probe
+# stderr capture, stray root orchestrator repair log; the real
+# orchestrator log lives under workspace/goals/)
+/census*.err
+/orchestrator-log.md
