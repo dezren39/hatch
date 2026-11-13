@@ -262,15 +262,18 @@ dragging from the edge); on web it is a dialog from the menu icon at
 the bottom of the left rail (see the web section).
 
 Typically present: Messaging channels (which ones appear depends on the
-account: `~/docs/chat-connections.md`; on confidential VMs this section
-is absent on every platform), Connectors, Help/Legal, Log out, and a data
+account: `~/docs/chat-connections.md`; on confidential VMs only WhatsApp
+can appear there, not Telegram or Messenger. A WhatsApp link stays with the
+VM it was created on, so after switching VMs, the user needs to re-link
+their WhatsApp; the steps are in `~/docs/chat-connections/whatsapp.md`),
+Connectors, Help/Legal, Log out, and a data
 pane with the agent-data download (labeled "Download your agent data" on
 every platform). "Export your information" is inside
 Meta Accounts Center. iOS, Android, and web
 all have a standalone Permissions pane in Settings. The settings rows listed for each platform in
 the sections below are the complete set this doc can vouch for.
 
-AI training opt-out is available on every surface, in that data pane. Confidential VMs do not show it (the reason and the account-wide rule: `~/docs/data-handling.md`). On a confidential VM, Settings also has no subscription or usage area and no invite-code redemption entry, on any platform.
+AI training opt-out is available on every surface, in that data pane. Confidential VMs do not show it (the reason and the account-wide rule: `~/docs/data-handling.md`). On a confidential VM, Settings also has no invite-code redemption entry, on any platform.
 
 Reset lives under Data Controls. Delete account is not a row anywhere; Reset wipes the agent's data, and deleting the account itself happens through Meta Accounts Center.
 
@@ -443,10 +446,10 @@ Settings panes:
 
 - General: the first card is Accounts Center (a link out to Meta's
   Accounts Center). Also holds an Appearance section (light/dark/system
-  mode and theme color), and, when enabled for the account and never on a
-  confidential VM, a Usage/subscription area (usage meter, plans, manage,
-  and a usage top-up purchase). The Usage area also has **Redeem invite
-  code** when redemption is available for the account; see
+  mode and theme color), and, when enabled for the account, a
+  Usage/subscription area (usage meter, plans, manage, and a usage top-up
+  purchase). On Secure VMs the Usage area also has **Redeem invite code**
+  when redemption is available for the account; see
   `~/docs/referrals.md`. A **Language**
   row opens a Language preference page where the user picks the language
   for the web app's buttons, titles, and other text in that browser. It does
@@ -455,7 +458,7 @@ Settings panes:
   messages you write later are authored in that language on every
   device. Content that already exists is not translated.
 - Messaging Channels (only visible when a channel is enabled for the
-  account, and never on confidential VMs)
+  account; on confidential VMs only WhatsApp)
 - Devices: paired-device rows with status and a detail view (device,
   last seen, OS; the current device also shows a read-only list of what
   it grants). Web has no control to remove, rename, or pair a device.
