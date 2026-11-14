@@ -41,6 +41,14 @@ import threading
 import time
 from pathlib import Path
 
+
+def log(msg):
+    """Timestamped broker log line (#9611 acceptance 4: every broker
+    log line carries a timestamp, and tunnel death/recovery events
+    are logged as they happen)."""
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    print(f"{ts} laptop-agent broker: {msg}", flush=True)
+
 spec = importlib.util.spec_from_file_location(
     "la", str(Path.home() / "tools/laptop-agent.py"))
 la = importlib.util.module_from_spec(spec)
@@ -180,6 +188,8 @@ def do_request(method, path, body, port=4799, token_file=None, client=True,
             return resp.status, json.loads(data or b"{}")
         except Exception as e:
             last_err = e
+            log(f"request attempt {attempt} port={port} failed: "
+                f"{type(e).__name__}: {e} (connection dropped, not repooled)")
             if tracker is not None:
                 tracker["tun"] = None
             try:
@@ -200,14 +210,21 @@ def preconnect():
 
 
 def keepalive_loop():
+    down = False
     while True:
         time.sleep(KEEPALIVE_S)
         if time.time() - _last_used > IDLE_EXIT_S:
             os._exit(0)
         try:
             do_request("GET", "/health", None, client=False)
-        except Exception:
-            pass
+            if down:
+                down = False
+                log("keepalive health recovered (tunnel pool reachable again)")
+        except Exception as e:
+            if not down:
+                down = True
+                log(f"keepalive health FAILED: {type(e).__name__}: {e} "
+                    "(tunnel pool may be wedged; #9611)")
 
 
 def read_msg(conn):
@@ -235,7 +252,15 @@ def write_msg(conn, obj):
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         while True:
-            req = read_msg(self.request)
+            try:
+                req = read_msg(self.request)
+            except (BlockingIOError, OSError):
+                # #9611 acceptance 3: the inflight watchdog toggles
+                # setblocking() on this socket; a recv racing that
+                # transition raises BlockingIOError out of read_msg.
+                # That must end the handler quietly, never propagate
+                # as an uncaught traceback that kills request handling.
+                return
             if req is None:
                 return
             tracker = {"tun": None}
@@ -271,12 +296,31 @@ class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     allow_reuse_address = True
 
 
+_singleton_lock_fd = None
+
+
 def main():
+    global _singleton_lock_fd
     SOCK_DIR.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(SOCK_DIR, 0o700)
     except OSError:
         pass
+    # #9611 acceptance 1 (Python-implementation leg): hold an
+    # exclusive flock on broker.lock for the process lifetime, so two
+    # Python broker starts can never both proceed — the socket probe
+    # below alone is racy (two starters can both see a stale socket).
+    # The flock releases automatically when the holder dies, so a
+    # crashed broker never wedges the path. NOTE: this binds only the
+    # Python implementation; the fleet-proxy (Rust) leg of acceptance
+    # 1 is tracked on issue #9611.
+    try:
+        import fcntl
+        _singleton_lock_fd = os.open(str(SOCK_DIR / "broker.lock"),
+                                     os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(_singleton_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return  # another Python broker holds the singleton lock
     if SOCK_PATH.exists():
         # A live broker already owns the socket; exit quietly.
         probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -286,14 +330,16 @@ def main():
             return
         except OSError:
             SOCK_PATH.unlink()
+    srv = Server(str(SOCK_PATH), Handler)
+    # broker.pid is written only after this process actually owns the
+    # listening socket, so it names the socket owner (#9611 acc. 1).
     try:
         (SOCK_DIR / "broker.pid").write_text(str(os.getpid()))
     except OSError:
         pass
-    srv = Server(str(SOCK_PATH), Handler)
     threading.Thread(target=preconnect, daemon=True).start()
     threading.Thread(target=keepalive_loop, daemon=True).start()
-    print(f"laptop-agent broker on {SOCK_PATH}", flush=True)
+    log(f"on {SOCK_PATH} pid={os.getpid()}")
     srv.serve_forever()
 
 
