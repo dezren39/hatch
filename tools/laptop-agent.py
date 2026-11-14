@@ -481,9 +481,10 @@ def cmd_spec(opt_args, cmd_args, cwd, shell):
 # stash/...). Read-only work in a primary (status, log, the sentinel's
 # checks, pm-git-sync's observers) stays allowed, as does `git worktree
 # add` FROM a primary — the sanctioned way fleet worktrees are created.
-# The launch-path half of #10095 (scheduler/hooks redirecting a session
-# whose working directory IS the primary) is separate; this guard only
-# sees the calls that pass through this client. Drew-ordered work in a
+# The launch-path half of #10095 item 1 (refusing a job launch whose
+# working directory IS the primary) is the launch guard further down;
+# both halves only see the calls that pass through this client.
+# Drew-ordered work in a
 # primary (the charter's parked-dirt exception) sets
 # LAPTOP_AGENT_PRIMARY_OK=1 for that call.
 _PRIMARY_CHECKOUTS = (
@@ -550,6 +551,75 @@ def _enforce_primary_guard(spec):
             f"laptop-agent: REFUSED (primary-checkout guard, "
             f"code#10095): {refusal}\n")
         sys.exit(3)
+
+
+# --- primary-checkout LAUNCH guard (code#10095 item 1, launcher half) --
+# A detached job (`run`) is a launched session of work: its working
+# directory is where that session lives. Launching one whose working
+# directory IS a primary checkout is refused here — the launch path
+# this client controls — regardless of whether the job's commands
+# mutate git state (that per-command check is item 2, above). The
+# refusal names the reason and the worktree relocation; every refusal
+# is also appended to ~/.cache/laptop-agent/primary-guard.log so the
+# launch record exists even when the caller keeps no record of its
+# own. One-off `exec` calls are NOT launches and stay under item 2
+# only, so read-only primary observers (sentinel checks, pm-git-sync)
+# keep working. Drew-ordered work in a primary sets
+# LAPTOP_AGENT_PRIMARY_OK=1 for that call, as with item 2.
+_LAUNCH_GUARD_LOG = os.path.expanduser(
+    "~/.cache/laptop-agent/primary-guard.log")
+
+
+def _launch_guard_check(spec):
+    """Return a refusal string if a job launch's working directory
+    resolves to a primary checkout, else None. The working directory
+    is the spec cwd, or — for a shell job with no cwd — a leading
+    `cd` target (the directory its first command moves to)."""
+    import re
+
+    if os.environ.get("LAPTOP_AGENT_PRIMARY_OK") == "1":
+        return None
+    targets = []
+    if spec.get("cwd"):
+        targets.append(spec["cwd"])
+    elif spec.get("shell"):
+        m = re.match(r"\s*cd\s+(\S+)", spec["shell"])
+        if m:
+            targets.append(m.group(1))
+    for target in targets:
+        normalized = _normalize_laptop_path(target)
+        if normalized in _PRIMARY_CHECKOUTS:
+            return (
+                f"launch working directory {target} is the primary "
+                f"checkout {normalized}. Sessions/jobs are never "
+                "launched in a primary checkout: relocate the launch "
+                "to a worktree under ~/git/fleet/ (create one with: "
+                "git -C <primary> worktree add ~/git/fleet/<name> "
+                "-b <branch>) and pass that as --cwd. For "
+                "Drew-ordered work in the primary itself, set "
+                "LAPTOP_AGENT_PRIMARY_OK=1.")
+    return None
+
+
+def _enforce_launch_guard(spec):
+    refusal = _launch_guard_check(spec)
+    if refusal is None:
+        return
+    try:
+        os.makedirs(os.path.dirname(_LAUNCH_GUARD_LOG), exist_ok=True)
+        with open(_LAUNCH_GUARD_LOG, "a") as fh:
+            fh.write(json.dumps({
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "verb": "run",
+                "cwd": spec.get("cwd"),
+                "refusal": refusal,
+            }) + "\n")
+    except Exception:
+        pass
+    sys.stderr.write(
+        f"laptop-agent: REFUSED (primary-checkout launch guard, "
+        f"code#10095): {refusal}\n")
+    sys.exit(3)
 
 
 def _exit_timeout():
@@ -641,6 +711,8 @@ def main():
         opts = ap.parse_args(opt_args)
         spec = cmd_spec(opt_args, cmd_args, opts.cwd, opts.shell)
         _enforce_primary_guard(spec)
+        if sub == "run":
+            _enforce_launch_guard(spec)
         ext = os.environ.get(EXTERNAL_DEADLINE_ENV)
         if sub == "exec" and ext:
             try:
