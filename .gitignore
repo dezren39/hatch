@@ -380,3 +380,11 @@ tools/handoff.sh
 # orchestrator log lives under workspace/goals/)
 /census*.err
 /orchestrator-log.md
+
+# review 2026-11-14: root fleet-lane scratch (stray supervision check-in
+# text dropped at root, generated repo-queue signal JSON, stray 0-byte
+# file) and a one-off lane enqueue helper script in tools/
+/invalid
+/repo-queue-signal-nix.json
+/zzt.txt
+tools/lane-code-a-enqueue-6277.py
