@@ -242,3 +242,21 @@ Semantics as fixed:
   immediately after every kill. Backups: *.bak-20261110-timeout-fix
   beside each file (laptop daemon: laptop_agent.py.bak-20261110-
   timeout-fix + .bak2-20261110).
+
+## OpenCode revision pin + parity (code#1362, recorded 2026-11-14, task 5007)
+- Canonical rev: the running fleet service and the code repo agree —
+  service exe (pid on :13420) = `opencode 2.0.30+0f5561c`; developing-today/code
+  `flake.lock` opencode input = `0f5561c21cb84465cefef3881fa1d6f8eaa43a4d`
+  (developing-today-forks/opencode). That pair is the verified pin.
+- Known skew (fresh probe 2026-11-14, unchanged since the 2026-11-13
+  inventory): laptop CLI (system bin + ~/.local/bin) = c43145b; sandbox
+  CLI (/usr/local/bin/opencode) = 954ff7c; dezren39/darwin-nix flake.lock
+  opencode pin = b80e509. Three surfaces, three non-canonical revs.
+- Update procedure (QUIET WINDOW ONLY — a switch on amd can restart the
+  socket-activated opencode.service and kill live fleet sessions):
+  (1) bump the darwin-nix opencode pin to the canonical rev (or the rev
+  the code pin moves to), (2) `sudo nixos-rebuild switch --flake
+  ~/git/code#amd` per the amd-switch rule above, (3) repoint the laptop
+  CLI wrapper and the sandbox nix profile to the same rev, (4) re-probe
+  all three surfaces (`opencode --version` + the service exe store path)
+  and record the result on code#1362.
