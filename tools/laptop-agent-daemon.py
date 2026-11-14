@@ -75,22 +75,30 @@ EXEC_PROCS_LOCK = threading.Lock()
 
 
 def log_trip(trip, kind, cmd_str, duration_ms, exit_code, out_bytes,
-             err_bytes):
+             err_bytes, t_received=None):
     """Append one trip record (single O_APPEND write) to trips.jsonl.
 
     Safety: only the command's first token and the sha256 of the full
     command string are recorded — never raw command text, environment,
     headers, or token values. Perf/safety: logging must never fail or
-    visibly delay the request, so every error is swallowed."""
+    visibly delay the request, so every error is swallowed.
+
+    Trip logging v2 (code#5702): t_received is the millisecond epoch
+    stamped at request entry in do_POST; with the client's t_sent /
+    t_returned it splits the trip into outbound / daemon / return
+    legs. v1 fields are kept verbatim for v1 readers."""
     try:
         parts = (cmd_str or "").split()
-        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        rec = {"v": 2,
+               "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                "trip": trip, "kind": kind,
                "cmd0": parts[0] if parts else "",
                "cmd_sha256": hashlib.sha256(
                    (cmd_str or "").encode("utf-8", "replace")).hexdigest(),
                "duration_ms": duration_ms, "exit": exit_code,
                "out_bytes": out_bytes, "err_bytes": err_bytes}
+        if t_received is not None:
+            rec["t_received"] = t_received
         fd = os.open(TRIPS_FILE, os.O_WRONLY | os.O_CREAT | os.O_APPEND,
                      0o644)
         try:
@@ -357,6 +365,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "no such route"})
 
     def do_POST(self):
+        # Trip v2 (code#5702): stamp reception at request entry; the
+        # value is echoed to the client as the internal _t_received
+        # response field (stripped client-side) and logged daemon-side.
+        t_received_ms = int(time.time() * 1000)
         if not self._authed():
             return self._send(401, {"error": "bad token"})
         path = urlparse(self.path).path
@@ -404,9 +416,11 @@ class Handler(BaseHTTPRequestHandler):
                 out_b = r.pop("_out_bytes", 0)
                 err_b = r.pop("_err_bytes", 0)
                 log_trip(trip, "exec", cmd_str, r.get("duration_ms"),
-                         r.get("exit"), out_b, err_b)
+                         r.get("exit"), out_b, err_b,
+                         t_received=t_received_ms)
             try:
-                return self._send(200, {"results": results})
+                return self._send(200, {"results": results,
+                                        "_t_received": t_received_ms})
             except (BrokenPipeError, ConnectionResetError):
                 pass  # client already gone; the work is done/killed
             return
@@ -454,7 +468,7 @@ class Handler(BaseHTTPRequestHandler):
             job = {"id": job_id, "proc": proc, "cwd": cwd,
                    "cmd_repr": cmd_repr, "started_at": time.time(),
                    "ended_at": None, "_files": (out_f, err_f),
-                   "trip": trip}
+                   "trip": trip, "t_received": t_received_ms}
             with JOBS_LOCK:
                 JOBS[job_id] = job
 
@@ -474,10 +488,12 @@ class Handler(BaseHTTPRequestHandler):
                     out_b = err_b = 0
                 log_trip(j["trip"], "job", j["cmd_repr"],
                          int((j["ended_at"] - j["started_at"]) * 1000),
-                         j["proc"].returncode, out_b, err_b)
+                         j["proc"].returncode, out_b, err_b,
+                         t_received=j.get("t_received"))
             threading.Thread(target=watch, daemon=True).start()
             reap_old_jobs()
-            return self._send(200, {"job_id": job_id})
+            return self._send(200, {"job_id": job_id,
+                                    "_t_received": t_received_ms})
         if path.startswith("/jobs/") and path.endswith("/kill"):
             job_id = path.split("/")[2]
             with JOBS_LOCK:

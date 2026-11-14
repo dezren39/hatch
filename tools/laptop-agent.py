@@ -164,13 +164,27 @@ def _cancel_in_flight(trip):
         _deadline = saved
 
 
-def _log_trip(trip, path, total_ms, status):
+def _log_trip(trip, path, total_ms, status, t_sent_ms=None,
+              t_returned_ms=None, t_received_ms=None):
     """Append one client-side trip record (single O_APPEND write).
-    Logging must never break or visibly delay a call: errors swallowed."""
+    Logging must never break or visibly delay a call: errors swallowed.
+
+    Trip logging v2 (code#5702): the line carries millisecond epochs
+    t_sent / t_returned minted here, plus the daemon-echoed t_received
+    when the response carried one, so a join on `trip` with the daemon
+    line splits the trip into outbound / daemon / return legs. v1
+    fields (ts, total_ms, status) are kept verbatim for v1 readers."""
     try:
-        rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        rec = {"v": 2,
+               "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                "trip": trip, "path": path,
                "total_ms": total_ms, "status": status}
+        if t_sent_ms is not None:
+            rec["t_sent"] = t_sent_ms
+        if t_returned_ms is not None:
+            rec["t_returned"] = t_returned_ms
+        if t_received_ms is not None:
+            rec["t_received"] = t_received_ms
         TRIP_LOG.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(TRIP_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND,
                      0o644)
@@ -357,6 +371,8 @@ def request(method, path, body=None):
         body = dict(body, trip=trip)
     cancellable = method == "POST" and path == "/exec"
     t0 = time.time()
+    t_sent_ms = int(t0 * 1000)
+    t_received_ms = None
     status = None
     if cancellable:
         _cancel_hook = lambda trip=trip: _cancel_in_flight(trip)
@@ -369,6 +385,10 @@ def request(method, path, body=None):
                 if status >= 400:
                     sys.exit(f"laptop-agent: HTTP {status}: "
                              f"{obj.get('error', obj)}")
+                if isinstance(obj, dict):
+                    # Trip v2: strip the daemon's internal t_received
+                    # echo before the result reaches callers (code#5702).
+                    t_received_ms = obj.pop("_t_received", None)
                 return obj
         token = TOKEN_FILE.read_text().strip()
         wait = _remaining()
@@ -399,12 +419,17 @@ def request(method, path, body=None):
         if status >= 400:
             sys.exit(f"laptop-agent: HTTP {status}: "
                      f"{obj.get('error', obj)}")
+        if isinstance(obj, dict):
+            t_received_ms = obj.pop("_t_received", None)
         return obj
     finally:
         _disarm_deadline_timer()
         if cancellable:
             _cancel_hook = None
-        _log_trip(trip, path, int((time.time() - t0) * 1000), status)
+        _log_trip(trip, path, int((time.time() - t0) * 1000), status,
+                  t_sent_ms=t_sent_ms,
+                  t_returned_ms=int(time.time() * 1000),
+                  t_received_ms=t_received_ms)
 
 
 def _direct_request(method, path, body=None, timeout_s=30):
@@ -428,6 +453,8 @@ def _direct_request(method, path, body=None, timeout_s=30):
     obj = json.loads(data or b"{}")
     if resp.status >= 400:
         raise RuntimeError(f"HTTP {resp.status}: {obj.get('error', obj)}")
+    if isinstance(obj, dict):
+        obj.pop("_t_received", None)  # trip v2 internal echo (code#5702)
     return obj
 
 
