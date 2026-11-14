@@ -90,6 +90,26 @@ fi
   done
 } 2>/dev/null || true
 
+# --- gh -> fleet gh shim (2026-11-14, Drew directive) ---
+# /usr/local/bin is overlay state: a recycle rebuilds it with gh
+# pointing at the nix profile again. Repoint it at the shim in
+# ~/tools (which survives) whenever it does not already resolve
+# there; the shim pins FLEET_GH_BIN to the real gh so fleet's own
+# gh calls cannot recurse, and gh-orig keeps the pristine binary
+# one name away. Best-effort: never prints, never changes the
+# exit contract.
+{
+  SHIM=/home/hatch/tools/gh-shim.sh
+  if [ -x "$SHIM" ] && [ -w /usr/local/bin ]; then
+    if [ "$(readlink -f /usr/local/bin/gh 2>/dev/null || echo none)" != "$SHIM" ]; then
+      ln -sfn "$SHIM" /usr/local/bin/gh
+    fi
+    if [ ! -e /usr/local/bin/gh-orig ] && [ -x /home/hatch/.nix-profile/bin/gh ]; then
+      ln -sfn /home/hatch/.nix-profile/bin/gh /usr/local/bin/gh-orig
+    fi
+  fi
+} 2>/dev/null || true
+
 # --- Warm check: marker matches this boot AND backstop timer installed ---
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ] \

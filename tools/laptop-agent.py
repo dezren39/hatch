@@ -474,6 +474,84 @@ def cmd_spec(opt_args, cmd_args, cwd, shell):
     return {"cwd": cwd, "argv": cmd_args}
 
 
+# --- primary-checkout guard (code#10095, launcher half of #9849) -------
+# Defense in depth for the worktree rule: refuse an exec whose target
+# directory is a fleet repo's PRIMARY checkout on the laptop and whose
+# command mutates git state there (checkout/switch/commit/clean/reset/
+# stash/...). Read-only work in a primary (status, log, the sentinel's
+# checks, pm-git-sync's observers) stays allowed, as does `git worktree
+# add` FROM a primary — the sanctioned way fleet worktrees are created.
+# The launch-path half of #10095 (scheduler/hooks redirecting a session
+# whose working directory IS the primary) is separate; this guard only
+# sees the calls that pass through this client. Drew-ordered work in a
+# primary (the charter's parked-dirt exception) sets
+# LAPTOP_AGENT_PRIMARY_OK=1 for that call.
+_PRIMARY_CHECKOUTS = (
+    "/home/user/git/code",
+    "/home/user/git/opencode",
+    "/home/user/git/openchamber-fork",
+    "/home/user/code/dezren39-nix",
+)
+_GIT_MUTATION_RE = None  # compiled lazily in _primary_guard_check
+
+
+def _normalize_laptop_path(token):
+    token = token.strip().strip("'\"").rstrip("/")
+    if token in ("~", "$HOME"):
+        return "/home/user"
+    for prefix in ("~/", "$HOME/"):
+        if token.startswith(prefix):
+            return "/home/user/" + token[len(prefix):]
+    return token
+
+
+def _primary_guard_check(spec):
+    """Return a refusal string if `spec` targets a primary checkout with
+    a git mutation, else None. Conservative by design: a mutation with
+    no provable primary target (no --cwd, no cd, no git -C) is allowed —
+    proving the session's directory is the launch path's job (#10095
+    item 1), and a false refusal here would block legitimate fleet work.
+    """
+    import re
+
+    global _GIT_MUTATION_RE
+    if _GIT_MUTATION_RE is None:
+        _GIT_MUTATION_RE = re.compile(
+            r"\bgit\s+(?:-C\s+\S+\s+)?"
+            r"(checkout|switch|commit|clean|reset|stash|rebase|merge|"
+            r"cherry-pick|apply|restore|rm|mv)\b")
+    if os.environ.get("LAPTOP_AGENT_PRIMARY_OK") == "1":
+        return None
+    text = spec.get("shell") or " ".join(spec.get("argv") or [])
+    if not _GIT_MUTATION_RE.search(text):
+        return None
+    targets = []
+    if spec.get("cwd"):
+        targets.append(spec["cwd"])
+    targets += re.findall(r"(?:^|&&|;|\|\|)\s*cd\s+(\S+)", text)
+    targets += re.findall(r"\bgit\s+-C\s+(\S+)", text)
+    for target in targets:
+        normalized = _normalize_laptop_path(target)
+        if normalized in _PRIMARY_CHECKOUTS:
+            return (
+                f"target directory {target} is the primary checkout "
+                f"{normalized} and the command mutates git state there. "
+                "Work in a worktree under ~/git/fleet/ instead (create "
+                "one with: git -C <primary> worktree add "
+                "~/git/fleet/<name> -b <branch>). For Drew-ordered work "
+                "in the primary itself, set LAPTOP_AGENT_PRIMARY_OK=1.")
+    return None
+
+
+def _enforce_primary_guard(spec):
+    refusal = _primary_guard_check(spec)
+    if refusal is not None:
+        sys.stderr.write(
+            f"laptop-agent: REFUSED (primary-checkout guard, "
+            f"code#10095): {refusal}\n")
+        sys.exit(3)
+
+
 def _exit_timeout():
     sys.stderr.write("laptop-agent: command timed out\n")
     sys.exit(TIMEOUT_EXIT)
@@ -524,6 +602,8 @@ def main():
 
     if sub == "exec-batch":
         body = json.loads(Path(rest[0]).read_text())
+        for _cmd in body.get("cmds", []):
+            _enforce_primary_guard(_cmd)
         _set_deadline(body.get("timeout_s", 120))
 
         def _batch():
@@ -560,6 +640,7 @@ def main():
         ap.add_argument("--shell", action="store_true")
         opts = ap.parse_args(opt_args)
         spec = cmd_spec(opt_args, cmd_args, opts.cwd, opts.shell)
+        _enforce_primary_guard(spec)
         ext = os.environ.get(EXTERNAL_DEADLINE_ENV)
         if sub == "exec" and ext:
             try:
