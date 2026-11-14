@@ -125,9 +125,65 @@ def _inflight_watchdog():
                     pass
 
 
+TUNNEL_CONNECT_TIMEOUT_S = float(
+    os.environ.get("LAPTOP_AGENT_TUNNEL_TIMEOUT", "5"))
+
+
+def broker_tunnel_socket(port, timeout_s=None):
+    """Broker-local CONNECT tunnel establishment (#9611 acceptance 2).
+
+    Same wire behaviour as la.tunnel_socket (credential read from the
+    HTTPS_PROXY env and sent only inside the CONNECT request), but
+    with a hard bounded timeout and ordinary exceptions: the client's
+    tunnel_socket can block up to 60 s waiting for the CONNECT response
+    and raises SystemExit on a closed proxy — inside a broker thread
+    SystemExit is a BaseException that bypasses every `except
+    Exception` guard and can hang or kill request handling silently,
+    which is exactly the episode-2 wedge shape. Here a wedged upstream
+    surfaces as a fast, logged OSError instead."""
+    import base64
+    import urllib.parse
+    raw = os.environ.get("HTTPS_PROXY")
+    if not raw:
+        raise OSError("HTTPS_PROXY must be set")
+    u = urllib.parse.urlparse(raw)
+    user = urllib.parse.unquote(u.username or "")
+    pw = urllib.parse.unquote(u.password or "")
+    timeout = TUNNEL_CONNECT_TIMEOUT_S if timeout_s is None else timeout_s
+    sock = socket.create_connection((u.hostname, la.PROXY_PORT),
+                                    timeout=timeout)
+    try:
+        sock.settimeout(timeout)
+        auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
+        req = (f"CONNECT {la.TARGET_HOST}:{port} HTTP/1.1\r\n"
+               f"Host: {la.TARGET_HOST}:{port}\r\n"
+               f"Proxy-Authorization: Basic {auth}\r\n"
+               f"Proxy-Connection: Keep-Alive\r\n\r\n")
+        sock.sendall(req.encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(1)
+            if not chunk:
+                raise OSError("proxy closed during CONNECT")
+            buf += chunk
+            if len(buf) > 65536:
+                raise OSError("CONNECT response too large")
+        status = buf.split(b"\r\n", 1)[0].decode("latin-1")
+        if " 200 " not in status and not status.endswith(" 200"):
+            raise OSError(f"CONNECT refused: {status}")
+    except Exception:
+        try:
+            sock.close()
+        except OSError:
+            pass
+        raise
+    sock.settimeout(None)
+    return sock
+
+
 def open_conn(port=4799):
     conn = http.client.HTTPConnection(la.TARGET_HOST, port, timeout=660)
-    conn.sock = la.tunnel_socket(port)
+    conn.sock = broker_tunnel_socket(port)
     return conn
 
 
@@ -144,11 +200,14 @@ def pool_put(port, conn):
 
 
 def pool_get(port):
+    """Return (conn, from_pool). Tunnel establishment failures raise
+    OSError from broker_tunnel_socket — callers must treat them as
+    request failures, never let them escape as thread deaths."""
     with _pool_lock:
         pool = _pools.get(port) or []
         if pool:
-            return pool.pop()
-    return open_conn(port)
+            return pool.pop(), True
+    return open_conn(port), False
 
 
 def do_request(method, path, body, port=4799, token_file=None, client=True,
@@ -171,10 +230,18 @@ def do_request(method, path, body, port=4799, token_file=None, client=True,
         timeout_s = max(1.0, min(660.0, float(deadline_s)))
     last_err = None
     for attempt in (1, 2):
-        conn = pool_get(port) if attempt == 1 else open_conn(port)
-        if tracker is not None:
-            tracker["tun"] = conn.sock
+        conn = None
+        from_pool = False
         try:
+            # Connection acquisition is INSIDE the try (#9611 acc. 2):
+            # a tunnel-establishment failure is a request failure with
+            # a fast, logged error — never an uncaught thread death.
+            if attempt == 1:
+                conn, from_pool = pool_get(port)
+            else:
+                conn = open_conn(port)
+            if tracker is not None:
+                tracker["tun"] = conn.sock
             if conn.sock is not None:
                 conn.sock.settimeout(timeout_s)
             headers = {"X-Agent-Token": token,
@@ -192,12 +259,20 @@ def do_request(method, path, body, port=4799, token_file=None, client=True,
                 f"{type(e).__name__}: {e} (connection dropped, not repooled)")
             if tracker is not None:
                 tracker["tun"] = None
-            try:
-                conn.close()
-            except Exception:
-                pass
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             if isinstance(e, (TimeoutError, socket.timeout)):
                 raise  # deadline fired; conn already dropped — no retry
+            if attempt == 1 and not from_pool:
+                # Attempt 1 already built a FRESH tunnel and it failed:
+                # the upstream is wedged — fail this client fast
+                # (#9611 acc. 2: <5s-class bounded error, logged above)
+                # instead of paying a second tunnel timeout. A retry
+                # is only for a stale POOLED connection.
+                raise
     raise last_err
 
 
