@@ -398,6 +398,20 @@ if [ -x "$SH_DIR/install-backup-units.sh" ]; then
   fi
 fi
 
+# --- Sandbox home mirror: reinstall systemd units if missing ---
+# Same pattern as above; units + installer live in hatch-personal
+# (scripts/sandbox-home-mirror). Daily rclone-crypt mirror push of
+# /home/hatch to R2 staging; the laptop pulls it and runs the restic
+# backup of record from there (hatch-personal#50, Drew 2026-11-14:
+# backups run from the laptop).
+SM_DIR=/home/hatch/hatch-personal/scripts/sandbox-home-mirror
+if [ -x "$SM_DIR/install-mirror-units.sh" ]; then
+  if ! systemctl is-active --quiet sandbox-home-mirror.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-mirror timer" >> "$LOG"
+    timeout 120 "$SM_DIR/install-mirror-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
 # --- Quota recorder: reinstall systemd units if missing ---
 # Same pattern as above; the units + installer live in
 # ~/tools/quota-recorder (code#6148). 5-minute Muse subscription
