@@ -156,3 +156,6 @@
   message while it stays active. The direct wham/usage read with the
   auth.json token still works. A second `opencode serve` on port 4098
   (started 2026-10-25 09:00, different server password) also exists.
+
+## Config hot-reload (verified in fork source 2026-11-15)
+- opencode.jsonc is WATCHED by the running server (core config service + ConfigWatch.plan); edits reload live — routes included (model-routes plugin observes the experimental section and reloads the provider). Do NOT restart opencode.service for config-only changes; restart/switch only for binary changes.
