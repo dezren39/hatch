@@ -388,3 +388,9 @@ tools/handoff.sh
 /repo-queue-signal-nix.json
 /zzt.txt
 tools/lane-code-a-enqueue-6277.py
+
+# review 2026-11-16: CF Access credential file for laptop-agent (contains
+# a client secret - never commit anywhere) and the 1.1GB zero-filled
+# GGUF placeholder fixture (sparse, machine-generated stand-in)
+/tools/laptop-agent-cf-access.json
+/tools/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
