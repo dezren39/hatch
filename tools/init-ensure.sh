@@ -77,6 +77,37 @@ fi
   fi
 } 2>/dev/null || true
 
+# --- Sandbox-local secrets broker (2026-11-15, code#10578) ---
+# The sandbox dual-hosts the secrets broker with the laptop so
+# sandbox secret reads survive a laptop broker/tunnel outage.
+# Spawn-mode `fleet init` reports this role but does not manage
+# it, so this prelude keeps it alive exactly like the session
+# proxy above. Loopback only: SECRETS_BROKER_BIND pins the TCP
+# leg to 127.0.0.1 (the broker's compiled default is the laptop's
+# tailnet IP - never use it here) and the UDS is pinned to the
+# fleet-config default path. The broker's API token is
+# ~/.config/secrets-broker/token; its Bitwarden machine token
+# resolves from ~/.config/bitwarden/access-token. Best-effort:
+# never prints, never changes the exit contract.
+{
+  SB_SOCK=/home/hatch/.config/secrets-broker/broker.sock
+  SB_LOG=/home/hatch/.cache/secrets-broker/broker.log
+  if [ ! -S "$SB_SOCK" ] || ! pgrep -f 'tools/fleet serve secrets-broker' >/dev/null 2>&1; then
+    mkdir -p /home/hatch/.cache/secrets-broker /home/hatch/.config/secrets-broker
+    exec 9>"/home/hatch/.cache/secrets-broker/.broker-ensure.lock"
+    if flock -n 9; then
+      if [ -x /home/hatch/tools/fleet ] && [ -s /home/hatch/.config/secrets-broker/token ]; then
+        setsid nohup env PATH="/home/hatch/tools/bin:/home/hatch/tools:$PATH" \
+          SECRETS_BROKER_BIND=127.0.0.1:4800 \
+          SECRETS_BROKER_SOCKET="$SB_SOCK" \
+          /home/hatch/tools/fleet serve secrets-broker \
+          >>"$SB_LOG" 2>&1 </dev/null &
+      fi
+    fi
+    exec 9>&-
+  fi
+} 2>/dev/null || true
+
 # --- fleet binary links (2026-11-04, code#5343) ---
 # ~/tools/bin/fleet is the PATH entry point for the fleet multicall
 # binary, and repo-queue is its argv0 alias. Recreate either link if it
