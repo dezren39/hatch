@@ -281,8 +281,19 @@ Semantics as fixed:
 - Remaining skew (2026-11-16, laptop-verifiable): dezren39/darwin-nix
   `flake.lock` opencode pin = `b80e509` (stale, separate repo — owns a
   different host's config, not this laptop's `/run/current-system`).
-  Sandbox CLI last read `2.0.30+954ff7c` (2026-11-14); NOT re-probed —
-  no sandbox route from the laptop (`ssh sandbox` does not resolve).
+  Sandbox CLI re-probed 2026-11-16 (task 5007, lane any-c, from the
+  sandbox itself): still `2.0.30+954ff7c` — a MISMATCH vs canonical.
+  Its owning source is an ad-hoc nix profile element
+  (`packages.x86_64-linux.opencode` from
+  `github:developing-today/opencode/954ff7c9723c…` — note the
+  developing-today/opencode repo, not the forks repo the other pins
+  use), so aligning it is a sandbox `nix profile` move, not a repo
+  pin change. Also verified 2026-11-16: `b80e509` is NOT an ancestor
+  of `5b65c2a` (merge base `6c43550`); its #1791 fix is a one-line
+  aarch64-darwin node_modules hash correction specific to the
+  6c43550 tree, and `5b65c2a`'s own darwin hash is unverified — the
+  darwin-nix pin must not move until the aarch64-darwin build at
+  the canonical rev is verified.
 - Update procedure (QUIET WINDOW ONLY — a switch on amd can restart the
   socket-activated opencode.service and kill live fleet sessions):
   (1) bump the darwin-nix opencode pin to the canonical rev (or the rev
