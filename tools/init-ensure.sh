@@ -92,6 +92,16 @@ fi
 {
   SB_SOCK=/home/hatch/.config/secrets-broker/broker.sock
   SB_LOG=/home/hatch/.cache/secrets-broker/broker.log
+  SB_PID=$(pgrep -f 'tools/fleet serve secrets-broker' 2>/dev/null | sort -n | head -1)
+  if [ -n "$SB_PID" ] && [ -S "$SB_SOCK" ] \
+    && ! curl -fsS -m 3 --unix-socket "$SB_SOCK" http://broker/health 2>/dev/null | grep -q '"serving":true'; then
+    SB_AGE=$(ps -o etimes= -p "$SB_PID" 2>/dev/null | tr -d ' ')
+    if [ "${SB_AGE:-0}" -ge 120 ]; then
+      kill "$SB_PID" 2>/dev/null
+      for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$SB_PID" 2>/dev/null || break; sleep 0.5; done
+      rm -f "$SB_SOCK"
+    fi
+  fi
   if [ ! -S "$SB_SOCK" ] || ! pgrep -f 'tools/fleet serve secrets-broker' >/dev/null 2>&1; then
     mkdir -p /home/hatch/.cache/secrets-broker /home/hatch/.config/secrets-broker
     exec 9>"/home/hatch/.cache/secrets-broker/.broker-ensure.lock"
