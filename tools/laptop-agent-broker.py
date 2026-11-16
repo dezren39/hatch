@@ -181,15 +181,31 @@ def broker_tunnel_socket(port, timeout_s=None):
     return sock
 
 
-def open_conn(port=4799):
+# Transports (2026-11-15, code#10356): "cf" = the named Cloudflare
+# tunnel (sandbox-link.security.cab, Access-gated) — primary for the
+# laptop-agent daemon on port 4799 only; "ts" = the Tailscale session
+# proxy CONNECT — the fallback for 4799 and the only transport for the
+# other brokered ports (4800/4801 are not ingressed on the tunnel).
+CF_PORT = 4799
+CF_EDGE_ERROR_STATUSES = (502, 503, 530)
+
+
+def open_conn(port=4799, transport="ts"):
+    if transport == "cf":
+        conn = la.make_cf_http()(la.CF_HOST, timeout=660)
+        # Eager connect: establishment failure must surface here as a
+        # request failure (same contract as broker_tunnel_socket),
+        # not later inside a handler thread's first send.
+        conn.connect()
+        return conn
     conn = http.client.HTTPConnection(la.TARGET_HOST, port, timeout=660)
     conn.sock = broker_tunnel_socket(port)
     return conn
 
 
-def pool_put(port, conn):
+def pool_put(port, conn, transport="ts"):
     with _pool_lock:
-        pool = _pools.setdefault(port, [])
+        pool = _pools.setdefault((port, transport), [])
         if len(pool) < POOL_SIZE:
             pool.append(conn)
             return
@@ -199,23 +215,43 @@ def pool_put(port, conn):
         pass
 
 
-def pool_get(port):
+def pool_get(port, transport="ts"):
     """Return (conn, from_pool). Tunnel establishment failures raise
-    OSError from broker_tunnel_socket — callers must treat them as
-    request failures, never let them escape as thread deaths."""
+    OSError from broker_tunnel_socket / la.cf_socket — callers must
+    treat them as request failures, never let them escape as thread
+    deaths."""
     with _pool_lock:
-        pool = _pools.get(port) or []
+        pool = _pools.get((port, transport)) or []
         if pool:
             return pool.pop(), True
-    return open_conn(port), False
+    return open_conn(port, transport), False
+
+
+def _attempt_plan(port, pref, cf_ok):
+    """Ordered (transport, source) attempts for one request. Cloudflare
+    is primary for the daemon port when the caller allows it; Tailscale
+    is the fallback leg (auto) and the only leg for other ports or
+    when pinned. A pooled attempt precedes at most one fresh attempt
+    per transport."""
+    cf_in_play = (port == CF_PORT and cf_ok and pref in ("auto", "cf")
+                  and la.CF_ACCESS_FILE.exists())
+    if cf_in_play:
+        plan = [("cf", "pool"), ("cf", "fresh")]
+        if pref == "auto":
+            plan.append(("ts", "fresh"))
+        return plan
+    return [("ts", "pool"), ("ts", "fresh")]
 
 
 def do_request(method, path, body, port=4799, token_file=None, client=True,
-               trip=None, deadline_s=None, tracker=None):
-    """One request on a pooled warm connection; one retry on a fresh
-    connection if the pooled one went stale. The socket timeout is
+               trip=None, deadline_s=None, tracker=None,
+               pref="auto", cf_ok=True):
+    """One request on a pooled warm connection; retries per the
+    transport attempt plan (stale pooled connection -> fresh one;
+    Cloudflare failure -> Tailscale fallback). The socket timeout is
     the caller's remaining deadline (clamped), and a connection that
-    fails or times out is closed — never returned to the pool."""
+    fails or times out is closed — never returned to the pool.
+    Returns (status, body, transport_used)."""
     global _last_used
     if client:
         _last_used = time.time()
@@ -228,34 +264,57 @@ def do_request(method, path, body, port=4799, token_file=None, client=True,
         timeout_s = 660
     else:
         timeout_s = max(1.0, min(660.0, float(deadline_s)))
+    plan = _attempt_plan(port, pref, cf_ok)
+    fresh_failed = set()
     last_err = None
-    for attempt in (1, 2):
+    for i, (transport, source) in enumerate(plan):
+        if source == "fresh" and transport in fresh_failed:
+            continue  # a fresh connection of this transport just failed
         conn = None
         from_pool = False
         try:
             # Connection acquisition is INSIDE the try (#9611 acc. 2):
             # a tunnel-establishment failure is a request failure with
             # a fast, logged error — never an uncaught thread death.
-            if attempt == 1:
-                conn, from_pool = pool_get(port)
+            if source == "pool":
+                conn, from_pool = pool_get(port, transport)
             else:
-                conn = open_conn(port)
+                conn = open_conn(port, transport)
             if tracker is not None:
                 tracker["tun"] = conn.sock
             if conn.sock is not None:
                 conn.sock.settimeout(timeout_s)
             headers = {"X-Agent-Token": token,
                        "Content-Type": "application/json"}
+            if transport == "cf":
+                headers.update(la._cf_access_headers())
             if trip:
                 headers["X-Trip-Id"] = trip
             conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
             data = resp.read()
-            pool_put(port, conn)
-            return resp.status, json.loads(data or b"{}")
+            if transport == "cf" \
+                    and resp.status in CF_EDGE_ERROR_STATUSES \
+                    and i < len(plan) - 1:
+                # The edge answered but the tunnel origin is down:
+                # drop the connection and take the fallback leg.
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                last_err = OSError(
+                    f"cloudflare edge status {resp.status}")
+                log(f"request port={port} via cf: edge status "
+                    f"{resp.status} (tunnel origin down; falling back)")
+                continue
+            pool_put(port, conn, transport)
+            return resp.status, json.loads(data or b"{}"), transport
         except Exception as e:
             last_err = e
-            log(f"request attempt {attempt} port={port} failed: "
+            if not from_pool:
+                fresh_failed.add(transport)
+            log(f"request attempt {i + 1} port={port} "
+                f"transport={transport} failed: "
                 f"{type(e).__name__}: {e} (connection dropped, not repooled)")
             if tracker is not None:
                 tracker["tun"] = None
@@ -266,22 +325,28 @@ def do_request(method, path, body, port=4799, token_file=None, client=True,
                     pass
             if isinstance(e, (TimeoutError, socket.timeout)):
                 raise  # deadline fired; conn already dropped — no retry
-            if attempt == 1 and not from_pool:
-                # Attempt 1 already built a FRESH tunnel and it failed:
-                # the upstream is wedged — fail this client fast
-                # (#9611 acc. 2: <5s-class bounded error, logged above)
-                # instead of paying a second tunnel timeout. A retry
-                # is only for a stale POOLED connection.
+            if not from_pool and i == len(plan) - 1:
+                # The last plan leg already built a FRESH connection
+                # and it failed: the upstream is wedged — fail this
+                # client fast (#9611 acc. 2) instead of paying another
+                # tunnel timeout.
                 raise
     raise last_err
 
 
 def preconnect():
+    # Warm the primary (Cloudflare) pool for the daemon port; if the
+    # tunnel is unreachable at broker start, warm Tailscale instead so
+    # the pool is never empty behind a down primary.
+    transport = "cf" if la.CF_ACCESS_FILE.exists() else "ts"
     for _ in range(POOL_SIZE):
         try:
-            pool_put(4799, open_conn(4799))
+            pool_put(CF_PORT, open_conn(CF_PORT, transport), transport)
         except Exception:
-            pass
+            if transport == "cf":
+                transport = "ts"
+                continue
+            break
 
 
 def keepalive_loop():
@@ -294,12 +359,13 @@ def keepalive_loop():
             do_request("GET", "/health", None, client=False)
             if down:
                 down = False
-                log("keepalive health recovered (tunnel pool reachable again)")
+                log("keepalive health recovered (a transport path is "
+                    "reachable again)")
         except Exception as e:
             if not down:
                 down = True
                 log(f"keepalive health FAILED: {type(e).__name__}: {e} "
-                    "(tunnel pool may be wedged; #9611)")
+                    "(both transport paths may be wedged; #9611)")
 
 
 def read_msg(conn):
@@ -347,14 +413,17 @@ class Handler(socketserver.BaseRequestHandler):
                     ts = body_in.get("timeout_s")
                     if isinstance(ts, (int, float)):
                         deadline_s = float(ts) + 15.0
-                status, body = do_request(
+                status, body, transport = do_request(
                     req["method"], req["path"], body_in,
                     port=int(req.get("port", 4799)),
                     token_file=req.get("token_file"),
                     trip=req.get("trip"),
                     deadline_s=deadline_s,
-                    tracker=tracker)
-                write_msg(self.request, {"status": status, "body": body})
+                    tracker=tracker,
+                    pref=req.get("transport", "auto"),
+                    cf_ok=req.get("cf_ok", True))
+                write_msg(self.request, {"status": status, "body": body,
+                                         "transport": transport})
             except Exception as e:
                 try:
                     write_msg(self.request, {

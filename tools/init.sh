@@ -361,9 +361,9 @@ fi
 
 # --- Hatch-personal autocommit: reinstall systemd units if missing ---
 # Same pattern as above; the units + installer live in hatch-personal
-# (scripts/hatch-autocommit). Every-minute commit+push of everything
-# uncommitted in hatch-personal, so a repeat of the 2026-10-25 deletion
-# incident can never lose more than ~1 minute of uncommitted work.
+# (scripts/hatch-autocommit). Commit+push of everything uncommitted in
+# hatch-personal every 45 minutes (cadence raised from 5 min on
+# 2026-11-15, Drew's ruling — churn-forensics option 6).
 AC_DIR=/home/hatch/hatch-personal/scripts/hatch-autocommit
 if [ -x "$AC_DIR/install-autocommit-units.sh" ]; then
   if ! systemctl is-active --quiet hatch-autocommit.timer 2>/dev/null; then

@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """laptop-agent client — talk to the laptop-agent daemon (code#5343).
 
-Reaches the laptop through the VM's tailnet tunnel proxy (HTTP CONNECT,
-same construction as laptop-proxy-connect.py; the proxy credential is read
-from HTTPS_PROXY and sent only inside the CONNECT request). The agent
-token lives in ~/tools/laptop-agent-token (mode 600) and is sent as a
-header — never in argv.
+Primary transport (2026-11-15, code#10356): the named Cloudflare tunnel
+— HTTPS to sandbox-link.security.cab through the platform egress proxy,
+Cloudflare Access service-token headers from
+~/tools/laptop-agent-cf-access.json (mode 600). Fallback transport: the
+VM's tailnet tunnel proxy (HTTP CONNECT, same construction as
+laptop-proxy-connect.py; the proxy credential is read from HTTPS_PROXY
+and sent only inside the CONNECT request), used automatically when the
+Cloudflare path fails and directly for /exec calls whose budget exceeds
+the Cloudflare edge's ~100 s response cap. The agent token lives in
+~/tools/laptop-agent-token (mode 600) and is sent as a header — never
+in argv. LAPTOP_AGENT_TRANSPORT=auto|cf|ts pins the preference.
 
 Usage:
   laptop-agent.py health
@@ -147,25 +153,38 @@ def _cancel_in_flight(trip):
     _disarm_deadline_timer()
     try:
         token = TOKEN_FILE.read_text().strip()
-        conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
-                                  timeout=_CANCEL_BUDGET_S)
-        conn.request("POST", f"/exec/{trip}/cancel",
-                     body=json.dumps({"trip": trip}),
-                     headers={"X-Agent-Token": token,
-                              "X-Trip-Id": trip,
-                              "Content-Type": "application/json"})
-        resp = conn.getresponse()
-        resp.read()
-        conn.close()
-        return resp.status == 200
-    except Exception:
+        # Cloudflare first (the primary path), Tailscale as fallback —
+        # a cancel matters most exactly when the primary path is sick.
+        attempts = []
+        if _transport_pref() != "ts" and CF_ACCESS_FILE.exists():
+            attempts.append((make_cf_http(), CF_HOST, 443,
+                             _cf_access_headers()))
+        if _transport_pref() != "cf":
+            attempts.append((make_tunnel_http(), TARGET_HOST,
+                             TARGET_PORT, {}))
+        for make, host, port, extra in attempts:
+            try:
+                conn = make(host, port, timeout=_CANCEL_BUDGET_S)
+                headers = {"X-Agent-Token": token,
+                           "X-Trip-Id": trip,
+                           "Content-Type": "application/json"}
+                headers.update(extra)
+                conn.request("POST", f"/exec/{trip}/cancel",
+                             body=json.dumps({"trip": trip}),
+                             headers=headers)
+                resp = conn.getresponse()
+                resp.read()
+                conn.close()
+                return resp.status == 200
+            except Exception:
+                continue
         return False
     finally:
         _deadline = saved
 
 
 def _log_trip(trip, path, total_ms, status, t_sent_ms=None,
-              t_returned_ms=None, t_received_ms=None):
+              t_returned_ms=None, t_received_ms=None, transport=None):
     """Append one client-side trip record (single O_APPEND write).
     Logging must never break or visibly delay a call: errors swallowed.
 
@@ -179,6 +198,8 @@ def _log_trip(trip, path, total_ms, status, t_sent_ms=None,
                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                "trip": trip, "path": path,
                "total_ms": total_ms, "status": status}
+        if transport is not None:
+            rec["transport"] = transport
         if t_sent_ms is not None:
             rec["t_sent"] = t_sent_ms
         if t_returned_ms is not None:
@@ -239,6 +260,111 @@ def make_tunnel_http():
     return TunnelHTTP
 
 
+# --- Cloudflare transport (primary since 2026-11-15, code#10356) -------
+# Drew's transport ruling (2026-11-15): sandbox -> laptop traffic rides
+# the named Cloudflare tunnel (sandbox-link.security.cab, Cloudflare
+# Access service-token gated) instead of the Tailscale session proxy;
+# the Tailscale path above stays as the automatic fallback. The tunnel
+# ingress lands on the daemon's own tailnet-IP listener from the laptop
+# side, so the daemon is untouched and its X-Agent-Token auth is
+# preserved end to end. The Access client id/secret live in a 0600 file
+# next to the agent token and are sent only as headers, never in argv.
+# LAPTOP_AGENT_TRANSPORT=auto|cf|ts overrides the preference (cf/ts
+# disable the fallback — used to prove each path on its own).
+CF_HOST = "sandbox-link.security.cab"
+CF_ACCESS_FILE = Path.home() / "tools/laptop-agent-cf-access.json"
+# Safety valve only: an /exec whose own budget exceeds this goes
+# straight to the Tailscale path. The classic Cloudflare ~100 s proxy
+# cap does NOT bite this tunnel in practice — wire-proven 2026-11-15
+# (code#10356): a 105 s /exec completed over the Cloudflare path with
+# status 200 — so the valve sits at the daemon's own 660 s ceiling
+# and the Cloudflare path carries every normal request.
+CF_EDGE_LIMIT_S = 660
+
+
+def _cf_access_headers():
+    try:
+        data = json.loads(CF_ACCESS_FILE.read_text())
+        return {"CF-Access-Client-Id": data["client_id"],
+                "CF-Access-Client-Secret": data["client_secret"]}
+    except Exception:
+        return {}
+
+
+def cf_socket(timeout=60):
+    """TLS socket to the daemon via the Cloudflare tunnel: CONNECT to
+    CF_HOST:443 through the platform egress proxy (HTTPS_PROXY's own
+    host:port — NOT the 3130 tailnet session proxy), then TLS with
+    normal certificate verification. Raises OSError on any failure so
+    callers can fall back to the Tailscale path."""
+    import base64
+    import ssl
+    import urllib.parse
+    raw = os.environ.get("HTTPS_PROXY")
+    if not raw:
+        raise OSError("HTTPS_PROXY must be set")
+    u = urllib.parse.urlparse(raw)
+    user = urllib.parse.unquote(u.username or "")
+    pw = urllib.parse.unquote(u.password or "")
+    sock = socket.create_connection((u.hostname, u.port or 3128),
+                                    timeout=timeout)
+    try:
+        sock.settimeout(timeout)
+        auth = base64.b64encode(f"{user}:{pw}".encode()).decode()
+        req = (f"CONNECT {CF_HOST}:443 HTTP/1.1\r\n"
+               f"Host: {CF_HOST}:443\r\n"
+               f"Proxy-Authorization: Basic {auth}\r\n"
+               f"Proxy-Connection: Keep-Alive\r\n\r\n")
+        sock.sendall(req.encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(1)
+            if not chunk:
+                raise OSError("proxy closed during CONNECT")
+            buf += chunk
+            if len(buf) > 65536:
+                raise OSError("CONNECT response too large")
+        status = buf.split(b"\r\n", 1)[0].decode("latin-1")
+        if " 200 " not in status and not status.endswith(" 200"):
+            raise OSError(f"CONNECT refused: {status}")
+        ctx = ssl.create_default_context()
+        tls = ctx.wrap_socket(sock, server_hostname=CF_HOST)
+        tls.settimeout(timeout)
+        return tls
+    except Exception:
+        try:
+            sock.close()
+        except OSError:
+            pass
+        raise
+
+
+def make_cf_http():
+    import http.client
+
+    class CFHTTPS(http.client.HTTPSConnection):
+        def connect(self):
+            self.sock = cf_socket(timeout=min(self.timeout or 60, 60))
+            if self.timeout:
+                self.sock.settimeout(self.timeout)
+    return CFHTTPS
+
+
+def _transport_pref():
+    """LAPTOP_AGENT_TRANSPORT: auto (default) | cf | ts."""
+    v = os.environ.get("LAPTOP_AGENT_TRANSPORT", "auto").lower()
+    return v if v in ("auto", "cf", "ts") else "auto"
+
+
+def _cf_suitable(path, body):
+    """Cloudflare is unsuitable only for a long /exec (edge cap)."""
+    if path == "/exec" and isinstance(body, dict):
+        ts = body.get("timeout_s")
+        if isinstance(ts, (int, float)) and ts > CF_EDGE_LIMIT_S:
+            return False
+    return True
+
+
 BROKER_SOCK = OFFSET_DIR / "broker.sock"
 BROKER_PY = Path.home() / "tools/laptop-agent-broker.py"
 BROKER_PID = OFFSET_DIR / "broker.pid"
@@ -274,7 +400,9 @@ def _broker_roundtrip(method, path, body, trip=None):
             s.settimeout(660 if wait is None else max(0.05, wait))
             s.connect(str(BROKER_SOCK))
             msg = {"method": method, "path": path,
-                   "body": body, "trip": trip}
+                   "body": body, "trip": trip,
+                   "transport": _transport_pref(),
+                   "cf_ok": _cf_suitable(path, body)}
             rem = _remaining()
             if rem is not None:
                 msg["deadline_s"] = rem
@@ -319,7 +447,7 @@ def _broker_roundtrip(method, path, body, trip=None):
                         f"{waited:.0f}s for its reply, beyond the "
                         f"time the laptop spent executing — the wait "
                         f"was in the broker/tunnel layer\n")
-            return obj["status"], obj["body"]
+            return obj["status"], obj["body"], obj.get("transport")
         except CallTimeout:
             if s is not None:
                 try:
@@ -374,6 +502,7 @@ def request(method, path, body=None):
     t_sent_ms = int(t0 * 1000)
     t_received_ms = None
     status = None
+    transport_used = None
     if cancellable:
         _cancel_hook = lambda trip=trip: _cancel_in_flight(trip)
     try:
@@ -381,7 +510,7 @@ def request(method, path, body=None):
         if not os.environ.get("LAPTOP_AGENT_NO_BROKER"):
             got = _broker_roundtrip(method, path, body, trip)
             if got is not None:
-                status, obj = got
+                status, obj, transport_used = got
                 if status >= 400:
                     sys.exit(f"laptop-agent: HTTP {status}: "
                              f"{obj.get('error', obj)}")
@@ -392,30 +521,64 @@ def request(method, path, body=None):
                 return obj
         token = TOKEN_FILE.read_text().strip()
         wait = _remaining()
-        try:
-            conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
-                                      timeout=660 if wait is None
-                                      else max(1.0, wait))
-            payload = json.dumps(body) if body is not None else None
-            conn.request(method, path, body=payload, headers={
-                "X-Agent-Token": token,
-                "X-Trip-Id": trip,
-                "Content-Type": "application/json",
-            })
+        timeout = 660 if wait is None else max(1.0, wait)
+        payload = json.dumps(body) if body is not None else None
+
+        def _attempt(transport):
+            if transport == "cf":
+                conn = make_cf_http()(CF_HOST, 443, timeout=timeout)
+                headers = {"X-Agent-Token": token, "X-Trip-Id": trip,
+                           "Content-Type": "application/json"}
+                headers.update(_cf_access_headers())
+            else:
+                conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
+                                          timeout=timeout)
+                headers = {"X-Agent-Token": token, "X-Trip-Id": trip,
+                           "Content-Type": "application/json"}
+            conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
-            status = resp.status
+            st = resp.status
             data = resp.read()
             conn.close()
-            obj = json.loads(data or b"{}")
-        except CallTimeout:
-            raise
-        except Exception as e:
-            # Transport failure on the direct path (proxy down, CONNECT
+            return st, json.loads(data or b"{}")
+
+        pref = _transport_pref()
+        order = []
+        if pref != "ts" and _cf_suitable(path, body) \
+                and CF_ACCESS_FILE.exists():
+            order.append("cf")
+        if pref != "cf":
+            order.append("ts")
+        if not order:
+            order = ["ts"]
+        last_err = None
+        obj = None
+        for transport in order:
+            try:
+                status, obj = _attempt(transport)
+                transport_used = transport
+                # The edge answering 502/503/530 means the tunnel
+                # origin is down: fall back to Tailscale for this call.
+                if transport == "cf" and status in (502, 503, 530) \
+                        and transport != order[-1]:
+                    last_err = OSError(
+                        f"cloudflare edge status {status}")
+                    status, obj = None, None
+                    continue
+                break
+            except CallTimeout:
+                raise
+            except Exception as e:
+                last_err = e
+                status, obj = None, None
+                continue
+        if obj is None:
+            # Transport failure on every path (proxy down, CONNECT
             # refused, daemon unreachable): fail LOUD with a named
             # one-line error — never a raw traceback, never silence
             # (code#5343 silence audit, 2026-11-10).
             sys.exit(f"laptop-agent: transport error: "
-                     f"{type(e).__name__}: {e}")
+                     f"{type(last_err).__name__}: {last_err}")
         if status >= 400:
             sys.exit(f"laptop-agent: HTTP {status}: "
                      f"{obj.get('error', obj)}")
@@ -429,7 +592,8 @@ def request(method, path, body=None):
         _log_trip(trip, path, int((time.time() - t0) * 1000), status,
                   t_sent_ms=t_sent_ms,
                   t_returned_ms=int(time.time() * 1000),
-                  t_received_ms=t_received_ms)
+                  t_received_ms=t_received_ms,
+                  transport=transport_used)
 
 
 def _direct_request(method, path, body=None, timeout_s=30):
@@ -440,19 +604,52 @@ def _direct_request(method, path, body=None, timeout_s=30):
     if method == "POST" and isinstance(body, dict) and path == "/jobs":
         body = dict(body, trip=trip)
     token = TOKEN_FILE.read_text().strip()
-    conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT, timeout=timeout_s)
     payload = json.dumps(body) if body is not None else None
-    conn.request(method, path, body=payload, headers={
-        "X-Agent-Token": token,
-        "X-Trip-Id": trip,
-        "Content-Type": "application/json",
-    })
-    resp = conn.getresponse()
-    data = resp.read()
-    conn.close()
-    obj = json.loads(data or b"{}")
-    if resp.status >= 400:
-        raise RuntimeError(f"HTTP {resp.status}: {obj.get('error', obj)}")
+
+    def _attempt(transport):
+        if transport == "cf":
+            conn = make_cf_http()(CF_HOST, 443, timeout=timeout_s)
+            headers = {"X-Agent-Token": token, "X-Trip-Id": trip,
+                       "Content-Type": "application/json"}
+            headers.update(_cf_access_headers())
+        else:
+            conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
+                                      timeout=timeout_s)
+            headers = {"X-Agent-Token": token, "X-Trip-Id": trip,
+                       "Content-Type": "application/json"}
+        conn.request(method, path, body=payload, headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, json.loads(data or b"{}")
+
+    pref = _transport_pref()
+    order = []
+    if pref != "ts" and CF_ACCESS_FILE.exists():
+        order.append("cf")
+    if pref != "cf":
+        order.append("ts")
+    if not order:
+        order = ["ts"]
+    last_err = None
+    status, obj = None, None
+    for transport in order:
+        try:
+            status, obj = _attempt(transport)
+            if transport == "cf" and status in (502, 503, 530) \
+                    and transport != order[-1]:
+                last_err = OSError(f"cloudflare edge status {status}")
+                status, obj = None, None
+                continue
+            break
+        except Exception as e:
+            last_err = e
+            status, obj = None, None
+    if obj is None:
+        raise RuntimeError(f"transport error: "
+                           f"{type(last_err).__name__}: {last_err}")
+    if status >= 400:
+        raise RuntimeError(f"HTTP {status}: {obj.get('error', obj)}")
     if isinstance(obj, dict):
         obj.pop("_t_received", None)  # trip v2 internal echo (code#5702)
     return obj
