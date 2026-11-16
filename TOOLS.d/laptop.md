@@ -243,6 +243,28 @@ Semantics as fixed:
   beside each file (laptop daemon: laptop_agent.py.bak-20261110-
   timeout-fix + .bak2-20261110).
 
+## Daemon death 2026-11-16 + AUTOMATIC SSH FALLBACK (code#2879)
+- The 2026-11-16 morning "tunnel down" episode was NOT a tunnel: the
+  laptop-agent daemon exited at 07:35:59 CT (SIGTERM, systemd
+  Result=success) after the pool.test storm, and Restart=on-failure
+  does not restart a "successful" exit. CF 502 + TS "proxy closed
+  during CONNECT" were the same corpse — every transport converges
+  on the one daemon at 100.99.113.103:4799. Unit now Restart=always
+  (hand-installed file ~/.config/systemd/user/laptop-agent.service,
+  backup .bak-20261116).
+- Drew's ruling (2026-11-16): the SSH fallback is AUTOMATIC.
+  ~/tools/laptop-agent.py request() now falls back to real SSH
+  (~/tools/laptop-ssh-real.sh) when all agent transports fail:
+  exec/exec-batch over SSH with identical result shape, health
+  synthesised, and jobs launched during an outage get `sshfb-` ids
+  (laptop spool ~/.local/state/laptop-agent/sshfb-jobs/) that stay
+  on the SSH path for poll/kill even after the daemon returns.
+  Disabled by a pinned LAPTOP_AGENT_TRANSPORT or
+  LAPTOP_AGENT_NO_SSH_FALLBACK=1. Backup:
+  ~/tools/laptop-agent.py.bak-20261116-sshfb. Also fixed en route:
+  tunnel_socket()'s sys.exit (a BaseException) escaped request()'s
+  except-Exception handling — the #9611 trap, client side.
+
 ## OpenCode revision pin + parity (code#1362, refreshed 2026-11-16, task 5007)
 
 - Canonical rev: `5b65c2a21d2fadbdcdf58ed96f85563bc5d25966`
