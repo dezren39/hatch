@@ -243,15 +243,24 @@ Semantics as fixed:
   beside each file (laptop daemon: laptop_agent.py.bak-20261110-
   timeout-fix + .bak2-20261110).
 
-## OpenCode revision pin + parity (code#1362, recorded 2026-11-14, task 5007)
-- Canonical rev: the running fleet service and the code repo agree —
-  service exe (pid on :13420) = `opencode 2.0.30+0f5561c`; developing-today/code
-  `flake.lock` opencode input = `0f5561c21cb84465cefef3881fa1d6f8eaa43a4d`
-  (developing-today-forks/opencode). That pair is the verified pin.
-- Known skew (fresh probe 2026-11-14, unchanged since the 2026-11-13
-  inventory): laptop CLI (system bin + ~/.local/bin) = c43145b; sandbox
-  CLI (/usr/local/bin/opencode) = 954ff7c; dezren39/darwin-nix flake.lock
-  opencode pin = b80e509. Three surfaces, three non-canonical revs.
+## OpenCode revision pin + parity (code#1362, refreshed 2026-11-16, task 5007)
+
+- Canonical rev: `5b65c2a21d2fadbdcdf58ed96f85563bc5d25966`
+  (developing-today-forks/opencode). Laptop parity HOLDS three ways —
+  running service exe
+  `/nix/store/bdkm7bd1gbx4i0cmk92zrzwc5x16ms00-opencode-2.0.30+5b65c2a/bin/opencode`
+  (service restarted 2026-11-16 02:24 CST) = `opencode v2.0.30+5b65c2a`;
+  laptop CLI (`~/.local/bin/opencode` wrapper execs
+  `/run/current-system/sw/bin/opencode`) = `v2.0.30+5b65c2a`;
+  developing-today/code `flake.lock` opencode input = `5b65c2a21d2f…`.
+  (Supersedes the 2026-11-14 record: canonical moved 0f5561c → 5b65c2a
+  via a code-flake update plus a service restart, not via the
+  darwin-nix/amd path below.)
+- Remaining skew (2026-11-16, laptop-verifiable): dezren39/darwin-nix
+  `flake.lock` opencode pin = `b80e509` (stale, separate repo — owns a
+  different host's config, not this laptop's `/run/current-system`).
+  Sandbox CLI last read `2.0.30+954ff7c` (2026-11-14); NOT re-probed —
+  no sandbox route from the laptop (`ssh sandbox` does not resolve).
 - Update procedure (QUIET WINDOW ONLY — a switch on amd can restart the
   socket-activated opencode.service and kill live fleet sessions):
   (1) bump the darwin-nix opencode pin to the canonical rev (or the rev
@@ -260,3 +269,8 @@ Semantics as fixed:
   CLI wrapper and the sandbox nix profile to the same rev, (4) re-probe
   all three surfaces (`opencode --version` + the service exe store path)
   and record the result on code#1362.
+- Still open on code#1362 (acceptance 2): a fleet health surface that
+  shows the actual running revision + mismatch without a manual version
+  command, with parity/mismatch tests. No such surface exists in the
+  code repo (checked 2026-11-16: no health/version probe under
+  `scripts/` or `pkgs/fleet/`).
