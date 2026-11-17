@@ -161,11 +161,11 @@ Every surface has Chat, Feed, Ideas, Goals, and Library. Chat search exists on e
 - **Library:** where Artifacts, documents, media, and files live.
 - **Artifacts:** the apps and pages you build for the user. What they are and how publishing works: `~/docs/artifacts.md`.
 
-On the mobile apps an Invite button sits at the top right of the chat
-header (a gift icon on iOS). It opens the invite share sheet.
+On Secure VMs, the mobile apps show an Invite button at the top right of the
+chat header (a gift icon on iOS). It opens the invite share sheet.
 On iPhone and Android, **Settings > Redeem token** accepts a friend's invite
-code during the first 48 hours after the user joins Muse (Secure VMs only;
-confidential VMs have no redemption entry).
+code during the first 48 hours after the user joins Muse. Confidential VMs
+have neither the Invite button nor a redemption entry.
 Invite links, code redemption, and offer terms: `~/docs/referrals.md`.
 
 ### Side chats

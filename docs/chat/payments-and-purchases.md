@@ -5,6 +5,11 @@ integrations retain their own checkout and approval contract. For a live
 website, assign the work through `browser.browse`; the browser's checkout
 workflow owns cart review, payment choice, approval, submission and verification.
 
+## Payment preapproval
+
+For browser purchase preapproval, follow
+`~/docs/chat/browser-purchase-preapproval.md` before preparing checkout.
+Use `binding.wallet` only for an explicit wallet preference when requesting purchase preapproval.
 
 ## Wallet readiness
 
