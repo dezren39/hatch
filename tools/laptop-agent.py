@@ -16,6 +16,7 @@ in argv. LAPTOP_AGENT_TRANSPORT=auto|cf|ts pins the preference.
 
 Usage:
   laptop-agent.py health
+  laptop-agent.py fetch [--chunk BYTES] PATH OUT
   laptop-agent.py exec [--cwd DIR] [--timeout S] [--shell] -- cmd [args...]
   laptop-agent.py exec-batch FILE.json     # {"cmds":[...], "timeout_s":N}
   laptop-agent.py run  [--cwd DIR] [--shell] -- cmd [args...]
@@ -1034,6 +1035,74 @@ def _direct_request(method, path, body=None, timeout_s=30):
     return obj
 
 
+def _fetch_chunk(path, off, length, timeout_s=120):
+    """One GET /file chunk over a fresh direct transport (the broker
+    protocol is JSON-only, so raw bytes bypass it — same transports
+    and order as _direct_request). Returns (data_bytes, total_size).
+    On total transport failure, falls back to one SSH chunk (dd +
+    base64) when the SSH fallback is allowed, mirroring request()."""
+    import urllib.parse
+    qs = urllib.parse.urlencode({"path": path, "off": off, "len": length})
+    route = f"/file?{qs}"
+    token = TOKEN_FILE.read_text().strip()
+
+    def _attempt(transport):
+        if transport == "cf":
+            conn = make_cf_http()(CF_HOST, 443, timeout=timeout_s)
+            headers = {"X-Agent-Token": token}
+            headers.update(_cf_access_headers())
+        else:
+            conn = make_tunnel_http()(TARGET_HOST, TARGET_PORT,
+                                      timeout=timeout_s)
+            headers = {"X-Agent-Token": token}
+        conn.request("GET", route, headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        hdrs = {k.lower(): v for k, v in resp.getheaders()}
+        conn.close()
+        return resp.status, data, hdrs
+
+    pref = _transport_pref()
+    order = []
+    if pref != "ts" and _cf_access_available():
+        order.append("cf")
+    if pref != "cf":
+        order.append("ts")
+    if not order:
+        order = ["ts"]
+    last_err = None
+    for transport in order:
+        try:
+            status, data, hdrs = _attempt(transport)
+            if transport == "cf" and status in (502, 503, 530) \
+                    and transport != order[-1]:
+                last_err = OSError(f"cloudflare edge status {status}")
+                continue
+            if status >= 400:
+                raise RuntimeError(f"HTTP {status}: "
+                                   f"{data[:200].decode('utf-8', 'replace')}")
+            return data, int(hdrs.get("x-file-size", off + len(data)))
+        except SystemExit as e:
+            last_err = OSError(str(e.code))
+        except Exception as e:
+            last_err = e
+    if _ssh_fallback_allowed():
+        import base64
+        import shlex
+        remote = (f"sz=$(stat -c%s {shlex.quote(path)} 2>/dev/null) || exit 1; "
+                  f"echo \"SIZE $sz\"; "
+                  f"dd if={shlex.quote(path)} bs=1 skip={off} "
+                  f"count={length} 2>/dev/null | base64 -w0; echo")
+        rc, out, _err = _ssh_run(remote, timeout_s + 15)
+        lines = out.decode("utf-8", "replace").splitlines()
+        if rc == 0 and lines and lines[0].startswith("SIZE "):
+            size = int(lines[0].split()[1])
+            return base64.b64decode(lines[1] if len(lines) > 1 else ""), size
+        raise RuntimeError(f"ssh fallback fetch failed (rc={rc})")
+    raise RuntimeError(f"transport error: "
+                       f"{type(last_err).__name__}: {last_err}")
+
+
 def split_cmd(args):
     """Everything after -- is the command."""
     if "--" in args:
@@ -1406,6 +1475,51 @@ def main():
             _exit_timeout()
         finally:
             _cancel_hook = None
+
+    if sub == "fetch":
+        # fetch PATH OUT — chunked download (code#5757): 1 MiB chunks
+        # by default, resume by offset (an existing OUT is continued
+        # from its current size, never restarted).
+        args = list(rest)
+        chunk = 1 << 20
+        if "--chunk" in args:
+            i = args.index("--chunk")
+            chunk = int(args[i + 1])
+            del args[i:i + 2]
+            if chunk <= 0 or chunk > (1 << 20):
+                sys.exit("laptop-agent: --chunk must be 1..1048576 "
+                         "(the daemon caps one request at 1 MiB)")
+        if len(args) != 2:
+            sys.exit("usage: laptop-agent.py fetch [--chunk BYTES] "
+                     "PATH OUT")
+        remote_path, out_path = args
+        off = os.path.getsize(out_path) if os.path.exists(out_path) else 0
+        resumed_from = off
+        trips = 0
+        total = None
+        mode = "ab" if off else "wb"
+        with open(out_path, mode) as fh:
+            while total is None or off < total:
+                data, total = _fetch_chunk(remote_path, off, chunk)
+                trips += 1
+                if off > total:
+                    sys.exit(f"laptop-agent: local {out_path} is {off} "
+                             f"bytes but remote {remote_path} is only "
+                             f"{total}; refusing to append — remove or "
+                             f"rename the local file and retry")
+                if not data and off < total:
+                    sys.exit("laptop-agent: empty chunk before EOF; "
+                             "fetch incomplete")
+                fh.write(data)
+                off += len(data)
+                if len(data) < chunk and off < total:
+                    continue
+        print(f"fetched {total} bytes from {remote_path} -> {out_path} "
+              f"in {trips} round trip(s)"
+              + (f" (resumed from offset {resumed_from})"
+                 if resumed_from else ""),
+              file=sys.stderr)
+        return
 
     sys.exit(f"laptop-agent: unknown subcommand {sub!r}")
 
