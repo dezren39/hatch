@@ -265,8 +265,14 @@ fi
 # Same pattern as above; the units + installer live in hatch-personal
 # (scripts/charge-inputs-fetcher). Stages Plaid/Gmail CLI responses and
 # pushes them to the laptop charge-candidates producer (code#4641).
+# STOPPED by Drew's order 2026-11-21 (background Gmail reads + per-email
+# approval cards). The disable marker below keeps init from reinstalling
+# it; to re-enable: rm ~/.config/charge-inputs-fetcher.disabled, then run
+# the installer once.
 CF_DIR=/home/hatch/hatch-personal/scripts/charge-inputs-fetcher
-if [ -x "$CF_DIR/install.sh" ]; then
+if [ -f /home/hatch/.config/charge-inputs-fetcher.disabled ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: charge-inputs-fetcher disabled by marker; skipping" >> "$LOG"
+elif [ -x "$CF_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet charge-inputs-fetcher.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring charge-inputs-fetcher timer" >> "$LOG"
     timeout 120 "$CF_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
