@@ -1,4 +1,6 @@
 #!/bin/bash
+# muse-bootstrap: bring the tailnet back after a recycle (scripts/muse/bootstrap.sh)
+[ -x /home/hatch/tools/muse-boot.sh ] && { /home/hatch/tools/muse-boot.sh || true; }
 # ~/tools/init.sh — boot/init restore for the agent sandbox.
 # Restores ephemeral state (system users, /nix symlink, wrappers, ...)
 # after the sandbox is recycled. Idempotent: safe to run any time; skips work

@@ -234,7 +234,7 @@ def _attempt_plan(port, pref, cf_ok):
     when pinned. A pooled attempt precedes at most one fresh attempt
     per transport."""
     cf_in_play = (port == CF_PORT and cf_ok and pref in ("auto", "cf")
-                  and la.CF_ACCESS_FILE.exists())
+                  and la._cf_access_available())
     if cf_in_play:
         plan = [("cf", "pool"), ("cf", "fresh")]
         if pref == "auto":
@@ -338,7 +338,7 @@ def preconnect():
     # Warm the primary (Cloudflare) pool for the daemon port; if the
     # tunnel is unreachable at broker start, warm Tailscale instead so
     # the pool is never empty behind a down primary.
-    transport = "cf" if la.CF_ACCESS_FILE.exists() else "ts"
+    transport = "cf" if la._cf_access_available() else "ts"
     for _ in range(POOL_SIZE):
         try:
             pool_put(CF_PORT, open_conn(CF_PORT, transport), transport)

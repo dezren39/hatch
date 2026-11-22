@@ -17,6 +17,13 @@ API (JSON):
   POST /jobs/<id>/kill            -> {ok, state}
   POST /exec/<trip>/cancel        -> {ok, cancelled} (POST /cancel
                                       {trip} is the legacy spelling)
+  GET  /file?path=&off=&len=      -> raw bytes (code#5757): the byte
+                                      range [off, off+len) of the file,
+                                      len capped at 1 MiB; response
+                                      headers X-File-Size (total size)
+                                      and X-File-Off echo the range.
+                                      Auth is the token header only,
+                                      exactly like every other route.
 
 Job stdout/stderr spool to ~/.local/state/laptop-agent/jobs/<id>/ so a
 daemon restart does not lose results. Finished jobs reaped after 24h.
@@ -50,6 +57,7 @@ TOKEN_FILE = Path(os.environ.get(
 STATE_DIR = Path(os.environ.get(
     "LAPTOP_AGENT_STATE", Path.home() / ".local/state/laptop-agent"))
 MAX_OUT = 1 << 20            # per-stream capture cap for /exec (tail kept)
+FILE_CHUNK_MAX = 1 << 20     # max bytes served per GET /file request
 EXEC_TIMEOUT_DEFAULT = 120
 EXEC_TIMEOUT_MAX = 600
 JOB_TTL_S = 24 * 3600
@@ -306,6 +314,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_bytes(self, code, data, extra_headers=None):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, str(v))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _authed(self):
         given = self.headers.get("X-Agent-Token", "")
         return hmac.compare_digest(given, TOKEN)
@@ -348,6 +365,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True,
                                     "uptime_s": int(time.time() - STARTED),
                                     "jobs": n, "load1": os.getloadavg()[0]})
+        if path.path == "/file":
+            q = parse_qs(path.query)
+            fpath = (q.get("path") or [""])[0]
+            if not fpath:
+                return self._send(400, {"error": "path required"})
+            try:
+                off = int((q.get("off") or ["0"])[0])
+                length = int((q.get("len") or [str(FILE_CHUNK_MAX)])[0])
+            except ValueError:
+                return self._send(400, {"error": "off/len must be ints"})
+            if off < 0 or length <= 0:
+                return self._send(400, {"error": "off>=0, len>=1 required"})
+            length = min(length, FILE_CHUNK_MAX)
+            try:
+                size = os.path.getsize(fpath)
+                if not os.path.isfile(fpath):
+                    raise OSError("not a regular file")
+            except OSError as e:
+                return self._send(404, {"error": f"no such file: {e}"})
+            if off > size:
+                return self._send(416, {"error": "off beyond end of file",
+                                        "size": size})
+            with open(fpath, "rb") as fh:
+                fh.seek(off)
+                data = fh.read(length)
+            return self._send_bytes(200, data, {"X-File-Size": size,
+                                                "X-File-Off": off})
         if path.path == "/jobs":
             with JOBS_LOCK:
                 items = [job_public(j) for j in JOBS.values()]
