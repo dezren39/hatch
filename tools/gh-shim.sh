@@ -20,10 +20,18 @@
 #     through fleet itself.
 #   * If the fleet binary is missing or broken, the shim says so on
 #     stderr and execs the real gh (fail visible, never silent).
+#   * While the routes-ensure marker (~/.local/state/fleet/gh-route,
+#     maintained by ~/tools/fleet-routes-ensure.sh) says the fleet
+#     gh route is down, calls go straight to the real gh the same
+#     way; the marker flips back when the route recovers.
 set -u
 
 REAL_GH=""
-for cand in /home/hatch/.nix-profile/bin/gh /home/hatch/tools/bin/gh-orig; do
+# /usr/bin/gh joined the candidates 2026-11-22: while nix is out the
+# nix-profile path dangles, which left this shim with no real gh at
+# all (every call exited 127); the packaged /usr/bin/gh is the
+# in-process signed-in gh and is also the routes-ensure fallback.
+for cand in /home/hatch/.nix-profile/bin/gh /usr/bin/gh /home/hatch/tools/bin/gh-orig; do
   if [ -x "$cand" ]; then
     REAL_GH=$(readlink -f "$cand" 2>/dev/null || echo "$cand")
     break
@@ -46,6 +54,23 @@ case "${1:-}" in
     exec "$REAL_GH" "$@"
     ;;
 esac
+
+# Route marker: ~/tools/fleet-routes-ensure.sh health-probes the
+# fleet gh route (init prelude + 15-min keeper) and records the
+# verdict here. While it says "direct", the fleet route is down, so
+# go straight to the in-process signed-in gh; the ensure flips it
+# back when the route recovers. A missing marker is the primary
+# route. One builtin read per call — the decision itself is made
+# at ensure time, never per call.
+GH_ROUTE_FILE=/home/hatch/.local/state/fleet/gh-route
+if [ -f "$GH_ROUTE_FILE" ]; then
+  GH_ROUTE=""
+  IFS= read -r GH_ROUTE < "$GH_ROUTE_FILE" || true
+  if [ "$GH_ROUTE" = "direct" ]; then
+    echo "gh-shim: fleet gh route is down (routes-ensure marker); using the in-process gh" >&2
+    exec "$REAL_GH" "$@"
+  fi
+fi
 
 FLEET_BIN=/home/hatch/tools/fleet
 if [ ! -x "$FLEET_BIN" ]; then

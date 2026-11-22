@@ -51,7 +51,12 @@ fi
         # cliffs at ~12 concurrent consumers). The compiled default
         # becomes 50 with the fleet-proxy pool fix; this env is the
         # explicit override at the broker's owning launch surface.
-        setsid nohup env LAPTOP_AGENT_POOL=50 /home/hatch/tools/fleet proxy serve \
+        # 2026-11-22: source the tailnet fleet-proxy.env first — the
+        # broker tunnels to the laptop through tailscaled's CONNECT
+        # proxy (127.0.0.1:3130); without HTTPS_PROXY set it fails
+        # every tunnel with "proxy closed during CONNECT" and the
+        # queue/shell doctor legs stay down.
+        setsid nohup bash -c 'set -a; [ -f /home/hatch/.local/state/tailscale/fleet-proxy.env ] && . /home/hatch/.local/state/tailscale/fleet-proxy.env; set +a; LAPTOP_AGENT_POOL=50 exec /home/hatch/tools/fleet proxy serve' \
           >>"$BROKER_LOG" 2>&1 </dev/null &
       else
         setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
@@ -92,7 +97,7 @@ fi
 {
   SB_SOCK=/home/hatch/.config/secrets-broker/broker.sock
   SB_LOG=/home/hatch/.cache/secrets-broker/broker.log
-  SB_PID=$(pgrep -f 'tools/fleet serve secrets-broker' 2>/dev/null | sort -n | head -1)
+  SB_PID=$(pgrep -f '^/home/hatch/tools/fleet serve secrets-broker' 2>/dev/null | sort -n | head -1)
   if [ -n "$SB_PID" ] && [ -S "$SB_SOCK" ] \
     && ! curl -fsS -m 3 --unix-socket "$SB_SOCK" http://broker/health 2>/dev/null | grep -q '"serving":true'; then
     SB_AGE=$(ps -o etimes= -p "$SB_PID" 2>/dev/null | tr -d ' ')
@@ -102,7 +107,7 @@ fi
       rm -f "$SB_SOCK"
     fi
   fi
-  if [ ! -S "$SB_SOCK" ] || ! pgrep -f 'tools/fleet serve secrets-broker' >/dev/null 2>&1; then
+  if [ ! -S "$SB_SOCK" ] || ! pgrep -f '^/home/hatch/tools/fleet serve secrets-broker' >/dev/null 2>&1; then
     mkdir -p /home/hatch/.cache/secrets-broker /home/hatch/.config/secrets-broker
     exec 9>"/home/hatch/.cache/secrets-broker/.broker-ensure.lock"
     if flock -n 9; then
@@ -115,6 +120,34 @@ fi
       fi
     fi
     exec 9>&-
+  fi
+} 2>/dev/null || true
+
+# --- Client routes ensure (2026-11-22, Drew directive) ---
+# Keeps the secrets client route (fleet.toml [secrets-broker]
+# transport: local "socket" vs laptop "tcp") and the gh route
+# marker the gh shim reads pointed at whichever route is actually
+# alive, falling back to the laptop / in-process routes while a
+# primary is unhealthy. The logic lives in
+# ~/tools/fleet-routes-ensure.sh, shared with the 15-minute keeper
+# (~/tools/felix-ensure.sh) so init and the keeper never fight over
+# the broker or the routes. Detached and throttled to one launch a
+# minute: the prelude never blocks on a probe. Best-effort: prints
+# nothing here (change tokens land in the routes log), never
+# changes the exit contract.
+{
+  ROUTES_SCRIPT=/home/hatch/tools/fleet-routes-ensure.sh
+  ROUTES_STAMP=/home/hatch/.local/state/fleet/.routes-ensure.last
+  if [ -x "$ROUTES_SCRIPT" ]; then
+    mkdir -p /home/hatch/.local/state/fleet
+    ROUTES_NOW=$(date +%s 2>/dev/null || echo 0)
+    ROUTES_LAST=0
+    [ -f "$ROUTES_STAMP" ] && ROUTES_LAST=$(cat "$ROUTES_STAMP" 2>/dev/null || echo 0)
+    case "$ROUTES_LAST" in *[!0-9]*|"") ROUTES_LAST=0 ;; esac
+    if [ $((ROUTES_NOW - ROUTES_LAST)) -ge 60 ]; then
+      echo "$ROUTES_NOW" > "$ROUTES_STAMP"
+      setsid nohup "$ROUTES_SCRIPT" >>/home/hatch/logs/fleet-routes-ensure.log 2>&1 </dev/null &
+    fi
   fi
 } 2>/dev/null || true
 
