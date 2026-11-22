@@ -41,7 +41,7 @@ fi
 {
   BROKER_SOCK=/home/hatch/.cache/laptop-agent/broker.sock
   BROKER_LOG=/home/hatch/.cache/laptop-agent/broker.log
-  if [ ! -S "$BROKER_SOCK" ] || { ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1 && ! pgrep -f 'tools/fleet proxy serve' >/dev/null 2>&1; }; then
+  if [ ! -S "$BROKER_SOCK" ] || { ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1 && ! pgrep -f '^/home/hatch/tools/fleet proxy serve' >/dev/null 2>&1; }; then
     mkdir -p /home/hatch/.cache/laptop-agent
     exec 9>"/home/hatch/.cache/laptop-agent/.broker-ensure.lock"
     if flock -n 9; then
@@ -147,6 +147,35 @@ fi
     if [ $((ROUTES_NOW - ROUTES_LAST)) -ge 60 ]; then
       echo "$ROUTES_NOW" > "$ROUTES_STAMP"
       setsid nohup "$ROUTES_SCRIPT" >>/home/hatch/logs/fleet-routes-ensure.log 2>&1 </dev/null &
+    fi
+  fi
+} 2>/dev/null || true
+
+# --- Session proxy broker env ensure (2026-11-22) ---
+# The spawn block above only sets the broker's env at spawn time,
+# and any fleet client can auto-spawn the broker first from an
+# agent shell — inheriting the sandbox egress proxy, which breaks
+# every tunnel to the laptop while the broker looks alive (the
+# 2026-11-22 queue/shell flap). fleet-proxy-ensure.sh is the one
+# implementation of the check (broker alive + HTTPS_PROXY equal to
+# the tailnet phase's fleet-proxy.env), shared with the 15-minute
+# keeper (~/tools/felix-ensure.sh). Detached and throttled to one
+# launch a minute, exactly like the routes ensure above: the
+# prelude never blocks on it. Best-effort: prints nothing here
+# (change tokens land in the proxy log), never changes the exit
+# contract.
+{
+  PROXY_SCRIPT=/home/hatch/tools/fleet-proxy-ensure.sh
+  PROXY_STAMP=/home/hatch/.local/state/fleet/.proxy-ensure.last
+  if [ -x "$PROXY_SCRIPT" ]; then
+    mkdir -p /home/hatch/.local/state/fleet
+    PROXY_NOW=$(date +%s 2>/dev/null || echo 0)
+    PROXY_LAST=0
+    [ -f "$PROXY_STAMP" ] && PROXY_LAST=$(cat "$PROXY_STAMP" 2>/dev/null || echo 0)
+    case "$PROXY_LAST" in *[!0-9]*|"") PROXY_LAST=0 ;; esac
+    if [ $((PROXY_NOW - PROXY_LAST)) -ge 60 ]; then
+      echo "$PROXY_NOW" > "$PROXY_STAMP"
+      setsid nohup "$PROXY_SCRIPT" >>/home/hatch/logs/fleet-proxy-ensure.log 2>&1 </dev/null &
     fi
   fi
 } 2>/dev/null || true
