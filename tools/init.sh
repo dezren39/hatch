@@ -428,6 +428,36 @@ if [ -x "$QR_DIR/install.sh" ]; then
   fi
 fi
 
+# --- Quota recorder: spool freshness (code#8022) ---
+# The block above proves the timer exists; this proves ticks are
+# LANDING. The file-first spool can stop growing, or records can
+# pile up unacked, while the timer stays active — the DB then goes
+# quiet with no signal, the silent-gap class #6148 fixed for the
+# units, one layer up. spool-freshness.py's thresholds respect the
+# recorder's fail-soft contract: a recording gap (or records
+# unacked beyond 20 min) is a genuine finding and counts toward
+# FAILURES; a transient flush error a later tick self-heals does
+# not. Only checked when the timer is active — a missing timer is
+# the restore block's finding, not this one's. The verdict also
+# lands in ~/logs/init-status as quota_spool=, next to the other
+# boot findings. A checker error is logged but never counted: a
+# tooling bug must not masquerade as a recorder outage.
+QR_SPOOL="unknown"
+if systemctl is-active --quiet quota-recorder.timer 2>/dev/null; then
+  QR_SPOOL=$(timeout 60 python3 "$QR_DIR/spool-freshness.py" 2>&1) || true
+  case "$QR_SPOOL" in
+    "ok "*)
+      ;;
+    STALE:*)
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool stale — $QR_SPOOL" >> "$LOG"
+      FAILURES=$((FAILURES+1))
+      ;;
+    *)
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool freshness check errored — $QR_SPOOL" >> "$LOG"
+      ;;
+  esac
+fi
+
 if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES"; fi
 {
   echo "boot_datetime=$BOOT_TIME"
@@ -445,6 +475,7 @@ if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES
   echo "profile_bins=$PROFILE_PKGS"
   echo "net_cache=$NET_OK"
   echo "quota=$QUOTA"
+  echo "quota_spool=$QR_SPOOL"
 } > "$STATUS"
 echo "[$END_DT] init: END result=$RESULT init_secs=$INIT_SECS nix=$NIX_VERSION store_paths=$STORE_PATHS profile_bins=$PROFILE_PKGS nix_persist=$NIX_SIZE net_cache=$NET_OK net_lat_s=$NET_LAT quota=[$QUOTA]" >> "$LOG"
 
