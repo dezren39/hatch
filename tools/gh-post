@@ -42,11 +42,24 @@ sanctioned posting path and this scan is its structural backstop.
 Test hooks (env): GH_POST_SKIP_USER=1 skips leg 1 as if rate-limited;
 GH_POST_SKIP_APP=1 skips leg 2 as if it failed. Both together drive the
 outbox leg end-to-end.
+
+Content ledger (dezren39/hatch#3, phase 1 of the content-creation
+throttle; design code#2013 / PR code#2226, tracker code#2227): every
+post reserves a row in the shared creation ledger
+(~/.local/state/fleet/content-ledger.sqlite) BEFORE the first leg runs
+and finalises it once the outcome is known — created (a leg posted and
+a read confirmed it), or failed with the reason (including "queued to
+the outbox", which is not a creation). The posted body carries a
+<!-- fleet-nonce:… --> marker so a create whose output is lost can
+still be verified by search. If the ledger cannot be written, gh-post
+refuses to post at all (exit 5): unledgered filing is exactly the
+silent-success failure mode the ledger exists to kill.
 """
 
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import hashlib
 import json
@@ -55,6 +68,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -69,6 +83,53 @@ LIMIT_RE = re.compile(
     re.IGNORECASE,
 )
 URL_RE = re.compile(r"https://github\.com/\S+")
+
+# --- Content ledger (dezren39/hatch#3) -------------------------------------
+sys.path.insert(0, str(Path(__file__).resolve().parent / "content-ledger"))
+try:
+    import content_ledger
+    _LEDGER_IMPORT_ERROR = None
+except Exception as _e:  # noqa: BLE001 — reported fatally at post time
+    content_ledger = None
+    _LEDGER_IMPORT_ERROR = _e
+
+
+def ledger_reserve(kind: str, repo: str):
+    """Reserve a ledger row for this post; die(5) if the ledger is down."""
+    if content_ledger is None:
+        die(f"content-ledger module unavailable ({_LEDGER_IMPORT_ERROR}); "
+            "refusing to post unledgered (hatch#3)", 5)
+    nonce = content_ledger.new_nonce()
+    try:
+        led = content_ledger.Ledger()
+        row = led.reserve(actor="dezren39",
+                          job=os.environ.get("FLEET_JOB", "gh-post"),
+                          repo=repo, kind=kind, nonce=nonce)
+    except content_ledger.LedgerError as e:
+        die(f"content-ledger reserve failed ({e}); "
+            "refusing to post unledgered (hatch#3)", 5)
+    return led, row, nonce
+
+
+def ledger_finalize(led, row: int, outcome: str, ref: str | None = None,
+                    detail: str | None = None,
+                    actor: str | None = None) -> None:
+    try:
+        led.finalize(row, outcome, ref=ref, detail=detail, actor=actor)
+    except content_ledger.LedgerError as e:
+        print(f"gh-post: LEDGER FINALIZE FAILED for row {row} "
+              f"(outcome {outcome}): {e}", file=sys.stderr)
+        raise SystemExit(5)
+
+
+def effective_body_file(body_file: Path, nonce: str) -> Path:
+    """The body actually posted: the caller's body + the nonce marker."""
+    raw = body_file.read_text(errors="replace")
+    fd, name = tempfile.mkstemp(prefix="gh-post-body-", suffix=".md")
+    with os.fdopen(fd, "w") as f:
+        f.write(raw.rstrip("\n") + f"\n\n<!-- fleet-nonce:{nonce} -->\n")
+    atexit.register(lambda: os.path.exists(name) and os.unlink(name))
+    return Path(name)
 
 # --- Pre-post secret scan (code#7072) -------------------------------------
 # Findings name the pattern class and line number only — never the value.
@@ -339,13 +400,20 @@ def main() -> int:
         number = args.issue or args.pr
         if not number:
             die("comment needs --issue N or --pr N")
+        led, row, nonce = ledger_reserve(
+            "pr_comment" if args.pr else "issue_comment", args.repo)
+        body_file = effective_body_file(body_file, nonce)
         if skip_user:
             outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
         else:
             outcome, detail = leg_user_comment(args.repo, number, bool(args.pr), body_file)
         if outcome == "posted":
+            # The user leg's own readback verified the exact posted body
+            # (nonce included) — that read is the confirming read.
+            ledger_finalize(led, row, "created", ref=detail)
             return 0
         if outcome == "error":
+            ledger_finalize(led, row, "failed", detail=detail)
             die(f"user leg failed (not rate-limit class): {detail}")
         print(f"gh-post: user route rate-limited; trying App route. ({detail[:120]})",
               file=sys.stderr)
@@ -354,22 +422,53 @@ def main() -> int:
         else:
             outcome2, detail2 = leg_app_comment(args.repo, number, body_file)
         if outcome2 == "posted":
+            # fleet-paperwork verifies by readback itself (see header).
+            ledger_finalize(
+                led, row, "created",
+                ref=detail2 if detail2.startswith("http") else None,
+                detail=None if detail2.startswith("http")
+                else "posted via App leg; URL not in fleet-paperwork output",
+                actor="developing.today[bot]")
             return 0
         print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
               file=sys.stderr)
-        ob = enqueue("comment", args.repo, body_file, None,
-                     f"{'pr' if args.pr else 'issue'} #{number}", [])
+        try:
+            ob = enqueue("comment", args.repo, body_file, None,
+                         f"{'pr' if args.pr else 'issue'} #{number}", [])
+        except SystemExit:
+            ledger_finalize(led, row, "failed",
+                            detail="outbox enqueue failed after both legs")
+            raise
+        ledger_finalize(
+            led, row, "failed",
+            detail=f"user+app legs rate-limited; queued to outbox {ob}; "
+                   "creation not yet performed")
         print(f"QUEUED {ob}")
         return 3
 
     # create
+    led, row, nonce = ledger_reserve("issue", args.repo)
+    body_file = effective_body_file(body_file, nonce)
     if skip_user:
         outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
     else:
         outcome, detail = leg_user_create(args.repo, args.title, body_file, args.label)
     if outcome == "posted":
-        return 0
+        # The create leg trusts the returned URL; the ledger's standard
+        # is stricter — confirm by read before recording success.
+        verified = content_ledger.confirm_created(
+            args.repo, "issue", detail, nonce)
+        if verified:
+            ledger_finalize(led, row, verified, ref=detail)
+            return 0
+        ledger_finalize(
+            led, row, "failed",
+            detail=f"user leg returned {detail} but no read confirms "
+                   "the object (readback mismatch)")
+        die(f"user leg returned {detail} but verify-by-read could not "
+            "confirm the object; recorded as failed in the content ledger")
     if outcome == "error":
+        ledger_finalize(led, row, "failed", detail=detail)
         die(f"user leg failed (not rate-limit class): {detail}")
     print(f"gh-post: user route rate-limited; trying App route. ({detail[:120]})",
           file=sys.stderr)
@@ -378,10 +477,25 @@ def main() -> int:
     else:
         outcome2, detail2 = leg_app_create(args.repo, args.title, body_file, args.label)
     if outcome2 == "posted":
+        ledger_finalize(
+            led, row, "created",
+            ref=detail2 if detail2.startswith("http") else None,
+            detail=None if detail2.startswith("http")
+            else "posted via App leg; URL not in fleet-paperwork output",
+            actor="developing.today[bot]")
         return 0
     print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
           file=sys.stderr)
-    ob = enqueue("issue", args.repo, body_file, args.title, None, args.label)
+    try:
+        ob = enqueue("issue", args.repo, body_file, args.title, None, args.label)
+    except SystemExit:
+        ledger_finalize(led, row, "failed",
+                        detail="outbox enqueue failed after both legs")
+        raise
+    ledger_finalize(
+        led, row, "failed",
+        detail=f"user+app legs rate-limited; queued to outbox {ob}; "
+               "creation not yet performed")
     print(f"QUEUED {ob}")
     return 3
 
