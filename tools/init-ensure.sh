@@ -15,6 +15,27 @@ TIMER_UNIT=/etc/systemd/system/init-ensure.timer
 INIT=/home/hatch/tools/init.sh
 mkdir -p "$LOG_DIR"
 
+# --- Binary resolution by test execution (code#12498) ---
+# ~/tools/fleet can be a Nix binary whose interpreter is absent in
+# this sandbox: it passes -x but every exec fails ENOENT, so the
+# broker/init blocks below resolve the fleet binary by test
+# execution (shared helper in resolve-bin.sh), falling back to the
+# recovery build. Resolved lazily, once, on first use, so the warm
+# path stays a few stats.
+[ -f /home/hatch/tools/resolve-bin.sh ] && . /home/hatch/tools/resolve-bin.sh
+FLEET_BIN_OK=""
+FLEET_BIN_RESOLVED=""
+fleet_bin_ok() {
+  if [ -z "$FLEET_BIN_RESOLVED" ]; then
+    FLEET_BIN_RESOLVED=1
+    if command -v resolve_test_exec >/dev/null 2>&1; then
+      FLEET_BIN_OK=$(resolve_test_exec /home/hatch/tools/fleet \
+        /home/hatch/.local/share/hatch-recovery/bin/fleet || true)
+    fi
+  fi
+  [ -n "$FLEET_BIN_OK" ]
+}
+
 # --- Previous-failure surfacing: report a failed init exactly once ---
 if [ -f "$STATUS" ]; then
   END_DT=$(grep '^end_datetime=' "$STATUS" 2>/dev/null | cut -d= -f2- || echo "")
@@ -41,17 +62,17 @@ fi
 {
   BROKER_SOCK=/home/hatch/.cache/laptop-agent/broker.sock
   BROKER_LOG=/home/hatch/.cache/laptop-agent/broker.log
-  if [ ! -S "$BROKER_SOCK" ] || { ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1 && ! pgrep -f 'tools/fleet proxy serve' >/dev/null 2>&1; }; then
+  if [ ! -S "$BROKER_SOCK" ] || { ! pgrep -f 'laptop-agent-broker\.py' >/dev/null 2>&1 && ! pgrep -f 'fleet proxy serve' >/dev/null 2>&1; }; then
     mkdir -p /home/hatch/.cache/laptop-agent
     exec 9>"/home/hatch/.cache/laptop-agent/.broker-ensure.lock"
     if flock -n 9; then
-      if [ -x /home/hatch/tools/fleet ]; then
+      if fleet_bin_ok; then
         # LAPTOP_AGENT_POOL=50: the proxy pool sized for the fleet's
         # work (code#5412 concurrency benchmark — the default of 12
         # cliffs at ~12 concurrent consumers). The compiled default
         # becomes 50 with the fleet-proxy pool fix; this env is the
         # explicit override at the broker's owning launch surface.
-        setsid nohup env LAPTOP_AGENT_POOL=50 /home/hatch/tools/fleet proxy serve \
+        setsid nohup env LAPTOP_AGENT_POOL=50 "$FLEET_BIN_OK" proxy serve \
           >>"$BROKER_LOG" 2>&1 </dev/null &
       else
         setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
@@ -72,8 +93,8 @@ fi
 # when it is not. Best-effort: output silenced, never changes the
 # exit contract.
 {
-  if [ -x /home/hatch/tools/fleet ]; then
-    FLEET_LOCATION=sandbox /home/hatch/tools/fleet init >/dev/null 2>&1 || true
+  if fleet_bin_ok; then
+    FLEET_LOCATION=sandbox "$FLEET_BIN_OK" init >/dev/null 2>&1 || true
   fi
 } 2>/dev/null || true
 
@@ -92,7 +113,7 @@ fi
 {
   SB_SOCK=/home/hatch/.config/secrets-broker/broker.sock
   SB_LOG=/home/hatch/.cache/secrets-broker/broker.log
-  SB_PID=$(pgrep -f 'tools/fleet serve secrets-broker' 2>/dev/null | sort -n | head -1)
+  SB_PID=$(pgrep -f 'fleet serve secrets-broker' 2>/dev/null | sort -n | head -1)
   if [ -n "$SB_PID" ] && [ -S "$SB_SOCK" ] \
     && ! curl -fsS -m 3 --unix-socket "$SB_SOCK" http://broker/health 2>/dev/null | grep -q '"serving":true'; then
     SB_AGE=$(ps -o etimes= -p "$SB_PID" 2>/dev/null | tr -d ' ')
@@ -102,15 +123,15 @@ fi
       rm -f "$SB_SOCK"
     fi
   fi
-  if [ ! -S "$SB_SOCK" ] || ! pgrep -f 'tools/fleet serve secrets-broker' >/dev/null 2>&1; then
+  if [ ! -S "$SB_SOCK" ] || ! pgrep -f 'fleet serve secrets-broker' >/dev/null 2>&1; then
     mkdir -p /home/hatch/.cache/secrets-broker /home/hatch/.config/secrets-broker
     exec 9>"/home/hatch/.cache/secrets-broker/.broker-ensure.lock"
     if flock -n 9; then
-      if [ -x /home/hatch/tools/fleet ] && [ -s /home/hatch/.config/secrets-broker/token ]; then
+      if fleet_bin_ok && [ -s /home/hatch/.config/secrets-broker/token ]; then
         setsid nohup env PATH="/home/hatch/tools/bin:/home/hatch/tools:$PATH" \
           SECRETS_BROKER_BIND=127.0.0.1:4800 \
           SECRETS_BROKER_SOCKET="$SB_SOCK" \
-          /home/hatch/tools/fleet serve secrets-broker \
+          "$FLEET_BIN_OK" serve secrets-broker \
           >>"$SB_LOG" 2>&1 </dev/null &
       fi
     fi
@@ -125,8 +146,8 @@ fi
 # untouched. Best-effort: never prints, never changes the exit contract.
 {
   for link in fleet repo-queue; do
-    if [ ! -e "/home/hatch/tools/bin/$link" ] && [ -x /home/hatch/tools/fleet ]; then
-      ln -sfn /home/hatch/tools/fleet "/home/hatch/tools/bin/$link"
+    if [ ! -e "/home/hatch/tools/bin/$link" ] && fleet_bin_ok; then
+      ln -sfn "$FLEET_BIN_OK" "/home/hatch/tools/bin/$link"
     fi
   done
 } 2>/dev/null || true
@@ -145,7 +166,7 @@ fi
     if [ "$(readlink -f /usr/local/bin/gh 2>/dev/null || echo none)" != "$SHIM" ]; then
       ln -sfn "$SHIM" /usr/local/bin/gh
     fi
-    if [ ! -e /usr/local/bin/gh-orig ] && [ -x /home/hatch/.nix-profile/bin/gh ]; then
+    if [ ! -e /usr/local/bin/gh-orig ] && [ -n "$(resolve_test_exec /home/hatch/.nix-profile/bin/gh 2>/dev/null || true)" ]; then
       ln -sfn /home/hatch/.nix-profile/bin/gh /usr/local/bin/gh-orig
     fi
   fi

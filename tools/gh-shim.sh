@@ -22,14 +22,36 @@
 #     stderr and execs the real gh (fail visible, never silent).
 set -u
 
+# Binary resolution by test execution (code#12498): a candidate
+# counts only if `<candidate> --version` exits 0 — a Nix binary with
+# an absent interpreter passes -x but fails every exec. The shared
+# helper lives in resolve-bin.sh; the inline copy below is the
+# fallback for when the helper file itself is missing, because this
+# shim must never break every gh call.
+if [ -f /home/hatch/tools/resolve-bin.sh ]; then
+  . /home/hatch/tools/resolve-bin.sh
+fi
+if ! command -v resolve_test_exec >/dev/null 2>&1; then
+  resolve_test_exec() {
+    local cand
+    for cand in "$@"; do
+      if [ -x "$cand" ] && timeout 10 "$cand" --version >/dev/null 2>&1; then
+        printf '%s\n' "$cand"
+        return 0
+      fi
+    done
+    return 1
+  }
+fi
+
 REAL_GH=""
 for cand in /home/hatch/.nix-profile/bin/gh /home/hatch/tools/bin/gh-orig; do
-  if [ -x "$cand" ]; then
+  if [ -n "$(resolve_test_exec "$cand" || true)" ]; then
     REAL_GH=$(readlink -f "$cand" 2>/dev/null || echo "$cand")
     break
   fi
 done
-if [ -z "$REAL_GH" ] || [ ! -x "$REAL_GH" ]; then
+if [ -z "$REAL_GH" ]; then
   echo "gh-shim: cannot locate the real gh binary; giving up" >&2
   exit 127
 fi
@@ -47,9 +69,12 @@ case "${1:-}" in
     ;;
 esac
 
-FLEET_BIN=/home/hatch/tools/fleet
-if [ ! -x "$FLEET_BIN" ]; then
-  echo "gh-shim: fleet binary missing ($FLEET_BIN); falling back to real gh" >&2
+# Test-exec each fleet candidate in fallback order (code#12498);
+# when none actually runs, say so and exec the real gh.
+FLEET_BIN=$(resolve_test_exec /home/hatch/tools/fleet \
+  /home/hatch/.local/share/hatch-recovery/bin/fleet || true)
+if [ -z "$FLEET_BIN" ]; then
+  echo "gh-shim: no working fleet binary; falling back to real gh" >&2
   exec "$REAL_GH" "$@"
 fi
 
