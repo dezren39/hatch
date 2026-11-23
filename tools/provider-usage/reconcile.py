@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pm-stack/provider-usage/reconcile.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Daily plan reconciliation diff (#1270, developing-today/code).
 
 Three records describe the same plans and drift independently:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code scripts/oc-attach.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """oc-attach — attach-first OpenCode session client for fleet workers.
 
 One documented entry point for programmatic OpenCode work against the

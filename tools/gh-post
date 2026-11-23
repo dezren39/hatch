@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/gh-fleet/gh-post — edit the canonical source there; this hatch copy is a deployed seat copy.
 """gh-post — rate-limit-proof GitHub posting for fleet writes that matter.
 
 Drew's rule (2026-11-05, AGENTS.md): WHEN GITHUB RATE-LIMITS A POST, USE THE

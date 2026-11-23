@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/deploy/quota-recorder.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Quota recorder (Drew's directive 2026-10-28; DB landing added
 2026-10-28 at Drew's direction): every tick, append a timestamped record
 of Muse's own subscription quota, read via the premade

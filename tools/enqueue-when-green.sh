@@ -1,4 +1,5 @@
 #!/bin/bash
+# Canonical: developing-today/code pkgs/fleet/enqueue-when-green.sh — edit the canonical source there; this hatch copy is a deployed seat copy.
 # Poll a PR's required basic check; enqueue it in the merge queue the
 # moment the check completes SUCCESS (enqueuePullRequest requires a
 # COMPLETED required check on the head). Usage: enqueue-when-green.sh <PR>
