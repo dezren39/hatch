@@ -50,6 +50,29 @@ if [ -f "$STATUS" ]; then
   fi
 fi
 
+# --- Tailnet proxy env for broker spawns (code#12426) ---
+# In userspace-tailscale mode the bootstrap tailnet phase writes
+# ~/.local/state/tailscale/fleet-proxy.env exporting HTTPS_PROXY at
+# tailscaled's local CONNECT proxy (127.0.0.1:3130). The session
+# proxy tunnels through whatever HTTPS_PROXY it is spawned with;
+# spawning it with the ambient sandbox egress proxy leaves every
+# CONNECT to a tailnet IP closed (the egress proxy cannot route
+# them), which is how the queue/shell legs died on the felix seat
+# (code#12426). So each broker spawn below runs in a subshell that
+# sources the env file first when it exists, dropping the other
+# ambient proxy vars so only the tailnet value survives. Absent
+# file = kernel mode (bootstrap removes it there): spawns inherit
+# the ambient env exactly as before. Subshell-scoped on purpose:
+# the rest of this prelude — the secrets broker's BWS calls in
+# particular — must keep the ambient egress route.
+TAILNET_PROXY_ENV=/home/hatch/.local/state/tailscale/fleet-proxy.env
+tailnet_proxy_env() {
+  if [ -f "$TAILNET_PROXY_ENV" ]; then
+    . "$TAILNET_PROXY_ENV" >/dev/null 2>&1 || true
+    unset http_proxy https_proxy HTTP_PROXY all_proxy ALL_PROXY
+  fi
+}
+
 # --- Session proxy (laptop-agent broker) autostart (2026-11-04, #5343) ---
 # Every prelude keeps the sandbox session proxy running: it is the single
 # entry point to the laptop (laptop-agent, secrets broker, queue broker).
@@ -72,11 +95,15 @@ fi
         # cliffs at ~12 concurrent consumers). The compiled default
         # becomes 50 with the fleet-proxy pool fix; this env is the
         # explicit override at the broker's owning launch surface.
-        setsid nohup env LAPTOP_AGENT_POOL=50 "$FLEET_BIN_OK" proxy serve \
-          >>"$BROKER_LOG" 2>&1 </dev/null &
+        # tailnet_proxy_env: spawn with the tailnet proxy env, never
+        # the ambient egress proxy (code#12426, helper above).
+        ( tailnet_proxy_env
+          setsid nohup env LAPTOP_AGENT_POOL=50 "$FLEET_BIN_OK" proxy serve \
+            >>"$BROKER_LOG" 2>&1 </dev/null & )
       else
-        setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
-          >>"$BROKER_LOG" 2>&1 </dev/null &
+        ( tailnet_proxy_env
+          setsid nohup python3 /home/hatch/tools/laptop-agent-broker.py \
+            >>"$BROKER_LOG" 2>&1 </dev/null & )
       fi
     fi
     exec 9>&-
@@ -94,7 +121,10 @@ fi
 # exit contract.
 {
   if fleet_bin_ok; then
-    FLEET_LOCATION=sandbox "$FLEET_BIN_OK" init >/dev/null 2>&1 || true
+    # Spawn mode runs the proxy role in this process, so the init
+    # call gets the same tailnet proxy env treatment (code#12426).
+    ( tailnet_proxy_env
+      FLEET_LOCATION=sandbox "$FLEET_BIN_OK" init >/dev/null 2>&1 || true )
   fi
 } 2>/dev/null || true
 
