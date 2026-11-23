@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/omnibin.md — this hatch copy is kept as the historical original (docs migration, 2026-11-22).
+
 # omnibin — every nixpkgs binary on your PATH
 
 ## What it is
