@@ -204,6 +204,9 @@ class Env:
             "GH_STUB_STATE": str(self.state),
             "GH_STUB_MODE": mode,
             "CONTENT_LEDGER_PATH": str(self.ledger),
+            # gh-post also passes the content-throttle gate (hatch#13);
+            # keep its state in the temp world too.
+            "CONTENT_THROTTLE_PATH": str(self.dir / "content-throttle.sqlite"),
             "FLEET_JOB": "test-job",
             "FLEET_ACTOR": "test-actor",
         })
