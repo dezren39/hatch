@@ -1,5 +1,7 @@
 # runtime-db-export
 
+> Canonical: developing-today/code `pkgs/fleet/runtime-db-export/` — edit the canonical source there; this hatch copy is a deployed seat copy.
+
 Periodic export of the Muse runtime records DB into the Turso DB
 `muse-mirror` (`agent_mirror_*` tables). Built 2026-10-29, approved by
 Drew 2026-10-28. Runs as an agent cron job `runtime-db-export` every 6 hours

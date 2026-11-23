@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical: developing-today/code pkgs/deploy/ — the deploy registry (services.nix quota-recorder target) renders and installs the live units; this installer is the superseded pre-registry source.
 # install.sh — idempotent installer for the quota-recorder systemd
 # units. /etc/systemd/system does not survive sandbox recycles, so
 # ~/tools/init.sh calls this on every boot where the timer is not

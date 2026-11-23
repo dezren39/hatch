@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pm-stack/provider-usage/check-usage.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Provider usage / OpenCode fleet snapshot for the Jules keeper job.
 
 Reads only local state and Drew's own provider endpoints. Never prints

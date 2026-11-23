@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/gh-fleet/test-gh-post-app-leg.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Regression test for gh-post's App leg (issue #7935).
 
 `laptop_paperwork()` ships fleet-paperwork arguments to the laptop as ONE

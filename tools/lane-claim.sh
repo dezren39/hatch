@@ -1,4 +1,5 @@
 #!/bin/bash
+# Canonical: developing-today/code pkgs/fleet/lane-claim.sh — edit the canonical source there; this hatch copy is a deployed seat copy.
 set -u
 OUT=$(fleet queue claim --queue repo-health-code-pilot --worker repo-worker-code --lane code-g --lease-seconds 2700)
 echo "$OUT" | python3 -c "

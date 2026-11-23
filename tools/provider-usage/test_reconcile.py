@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pm-stack/provider-usage/test_reconcile.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Fixture tests for reconcile.py (#1270 acceptance: a planted mismatch
 in a test fixture is caught). Oracle: the diff output must contain
 exactly the planted findings and no others."""

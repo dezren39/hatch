@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pm-stack/quota-check/turso-mirror-read.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """quota-check Turso mirror reads — per-DB libsql HTTP, per-DB tokens.
 
 Implements developing-today/code#6828: quota-check's two Turso mirror

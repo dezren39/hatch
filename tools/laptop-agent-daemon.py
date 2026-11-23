@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/laptop-agent/src/laptop_agent.py (reconciled daemon, code#10131) — edit the canonical source there; this hatch copy is the pre-reconciliation lineage.
 """laptop-agent daemon — resident execution agent on Drew's laptop.
 
 Design: developing-today/code#5343. Single file, Python stdlib only.

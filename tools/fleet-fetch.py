@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/fleet/fleet-fetch.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """fleet-fetch.py — deterministic repo snapshot fetcher (Phase B part 1).
 
 For each fleet repo: pull current state via `gh api` and upsert a row
