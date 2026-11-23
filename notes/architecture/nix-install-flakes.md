@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/nix-install-flakes.md — this hatch copy is kept as the historical original (docs migration, 2026-11-22).
+
 # Installing Nix with Flakes (this sandbox)
 
 How Nix 2.35.2 was installed here, with flakes enabled, in a rootless-hostile

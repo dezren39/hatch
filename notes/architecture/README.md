@@ -5,13 +5,13 @@ services, and everything we've learned operating it.
 
 ## Contents
 
-- [boot-lifecycle.md](boot-lifecycle.md) — Boot vs recycle, the init system, cron scheduling, and the marker protocol
-- [nix-persistence.md](nix-persistence.md) — How `/nix` survives recycles with zero copies (symlink + LD_PRELOAD shim)
-- [nix-install-flakes.md](nix-install-flakes.md) — Installing Nix single-user with flakes enabled, the wrappers, self-healing
-- [omnibin.md](omnibin.md) — What omnibin is, how we use it without FUSE, links (flake, blog, releases)
-- [program-access.md](program-access.md) — How every program is on PATH in every exec (wrappers, profile sync, bash wrapper, `@version`)
-- [systemd.md](systemd.md) — Running persistent services via systemd units and detached processes
-- [telemetry.md](telemetry.md) — Boot logging: human-readable log, compact JSONL, and what we capture
+- [boot-lifecycle.md](boot-lifecycle.md) — Boot vs recycle, the init system, cron scheduling, and the marker protocol — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/boot-lifecycle.md)
+- [nix-persistence.md](nix-persistence.md) — How `/nix` survives recycles with zero copies (symlink + LD_PRELOAD shim) — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/nix-persistence.md)
+- [nix-install-flakes.md](nix-install-flakes.md) — Installing Nix single-user with flakes enabled, the wrappers, self-healing — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/nix-install-flakes.md)
+- [omnibin.md](omnibin.md) — What omnibin is, how we use it without FUSE, links (flake, blog, releases) — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/omnibin.md)
+- [program-access.md](program-access.md) — How every program is on PATH in every exec (wrappers, profile sync, bash wrapper, `@version`) — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/program-access.md)
+- [systemd.md](systemd.md) — Running persistent services via systemd units and detached processes — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/systemd.md)
+- [telemetry.md](telemetry.md) — Boot logging: human-readable log, compact JSONL, and what we capture — canonical copy: [developing-today/code](https://github.com/developing-today/code/blob/main/doc/2026-11-23T04-48-52Z_migration_hatch-architecture-notes/telemetry.md)
 - [capabilities.md](capabilities.md) — Kernel caps, what works / doesn't (FUSE, mknod, namespaces), sandbox quirks
 - [system-profile.md](system-profile.md) — OS, hardware, VM/container indicators, read-only surfaces, mounts
 - [home-dir-inventory.md](home-dir-inventory.md) — Every top-level dir/file in /home/hatch: what, how many, how big

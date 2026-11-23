@@ -1,3 +1,5 @@
+Canonical: https://github.com/developing-today/code/blob/main/pkgs/fleet/archer-slack/slack-agent-design.md — this hatch copy is kept as the historical original (docs migration, 2026-11-22).
+
 # Making Muse a Slack agent ("Archer") — design notes
 
 Status: design only, nothing installed. Companion files in this folder:
