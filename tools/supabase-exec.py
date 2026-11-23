@@ -17,11 +17,21 @@ a Bearer token. No secret is ever printed. Output is the JSON result rows.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.request
 
-BWS = os.path.expanduser("~/tools/bin/bws")
+def _bws_bin():
+    # bws lives in ~/tools/bin on the sandbox, but on the laptop it is in
+    # the Nix system profile (/run/current-system/sw/bin) and ~/tools/bin
+    # does not exist — the hardcoded path made this tool unrunnable there.
+    # PATH first, pinned sandbox path as fallback (same shape as
+    # supabase_backup.py's bws_bin()).
+    return shutil.which("bws") or os.path.expanduser("~/tools/bin/bws")
+
+
+BWS = _bws_bin()
 TOKEN_FILE = os.path.expanduser("~/.config/bitwarden/access-token")
 SECRET_KEY = "supabase.muse-dev2.access-token-muse-cli"
 REF_KEY = "supabase.muse-dev2.project-ref"
