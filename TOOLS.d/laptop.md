@@ -307,3 +307,111 @@ Semantics as fixed:
   command, with parity/mismatch tests. No such surface exists in the
   code repo (checked 2026-11-16: no health/version probe under
   `scripts/` or `pkgs/fleet/`).
+
+## LAPTOP ROUTE FORMS — CODIFIED 2026-11-23 (code#13717, PR #13773)
+
+The standing route order now lives here as a matrix of **eight literal
+forms**. Design record: code repo
+`doc/2026-11-23T21-18-54Z_design_laptop_route_forms/`. The fleet
+subcommands land with PR #13773; **the seat binary serves them only
+after the next fleet-static publish** — until then the seat's `fleet`
+answers the new domains as unknown, and the working fleet-shape client
+is still `laptop-agent.py` / the raw forms below.
+
+| Tier | Method | Shape | Literal command |
+|---|---|---|---|
+| T0 | tiered | fleet | `fleet laptop exec [--timeout S] -- cmd...` — walks T1 → T2 → T3, reports the serving tier |
+| T1 | commander | fleet | `fleet commander exec [--cwd D] --timeout S -- cmd...` |
+| T2 | http-direct | fleet | `fleet http exec [--cwd D] --timeout S -- cmd...` (daemon API, HTTP legs only — never ssh) |
+| T3 | ssh | fleet | `fleet ssh exec [--cwd D] --timeout S -- cmd...` |
+| T4 | commander | raw | curl recipe below against `https://commander.security.cab/mcp` |
+| T5 | http-direct | raw | curl recipe below to the daemon API via the relay proxy |
+| T6 | ssh | raw | the literal `ssh` invocation below (= `~/tools/laptop-ssh-real.sh`) |
+| T7 | wrapper | simplified | `laptop-ssh 'cmd...'` — **fallback + simplified tier (demoted, not removed)** |
+
+**Composition + doctrine.** Tier 0 first. It advances only when a tier
+fails to *serve* (transport/auth/connect or a tier-level timeout) —
+never on a served exit code — and names the serving tier. Tier 0 does
+NOT fall through to T7: when it fails, try the individual subcommands
+as their own commands (an attempt under T0's process shape is a
+different literal invocation), then the raw forms, then `laptop-ssh`.
+Circumstance decides the form; gate behaviour keys on the literal
+command shape, so **raw forms are first-class**: run them as written,
+never blended into a wrapper. Every result names its form
+(`form T2 http/fleet`). Timeouts are required by construction on every
+fleet form (T0: 120 s/attempt; T1: 120 s; T2/T3: 300 s defaults).
+
+**Why laptop-ssh is T7, and what the demotion must respect.** The
+demotion is documentation-and-defaults ONLY. `laptop-ssh.sh` is
+load-bearing: the heal/init stack (`laptop-channel-heal.sh`,
+`init-ensure.sh`) and crons delegate through it, lane habits use it,
+and its delegate (laptop-agent.py) carries the automatic SSH fallback
+for daemon-down recovery (2026-11-16 section above). Nothing that
+calls it today may break; do not "clean it up" into the fleet binary.
+
+**Proxy env caveat for the ssh forms (T3/T6), observed 2026-11-23:**
+the sandbox shell's default `HTTPS_PROXY` (the 3128 egress proxy)
+closes CONNECTs to the laptop — both `fleet ssh` and
+`laptop-ssh-real.sh` fail there with `Connection closed by UNKNOWN
+port 65535` / "proxy closed during CONNECT". The working value is the
+relay the channel stack itself runs: the `HTTPS_PROXY` that
+`~/tools/init-ensure.sh` sets (127.0.0.1:3130 relay). Export that
+value before T3/T6. (T1/T4 do not need it; T2's broker leg does not
+either.)
+
+**T4 — raw curl to the commander endpoint (verified 2026-11-23).**
+Bearer by name at call time, never filed; browser UA is mandatory
+(the edge 1010-blocks other agents); responses are SSE `data:` lines
+— pick the JSON-RPC message with your request id.
+
+```bash
+EP=https://commander.security.cab/mcp
+UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+BEARER=$(fleet secrets get desktop-commander.machine-bearer)
+# 1. initialize -> read Mcp-Session-Id from the response headers (-D file)
+curl -sS -D /tmp/hdrs --max-time 30 "$EP" \
+  -H "Authorization: Bearer $BEARER" -H "User-Agent: $UA" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"raw-curl","version":"1"}}}'
+SID=$(grep -i '^mcp-session-id:' /tmp/hdrs | tr -d '\r' | awk '{print $2}')
+# 2. notifications/initialized (same headers + "Mcp-Session-Id: $SID", no id)
+# 3. tools/call start_process {"command":"hostname","timeout_ms":3000} -> PID in the reply text
+# 4. poll tools/call read_process_output {"pid":PID,"timeout_ms":5000} until
+#    the reply text carries "Process completed with exit code N"
+```
+
+Session hygiene is part of the form: always poll to completion or
+`force_terminate` — a start without a poll leaves a process running
+on the laptop (the 2026-11-23 pile-up).
+
+**T5 — raw curl to the daemon API (verified 2026-11-23).** Token read
+from its file at call time; proxy = the relay value above.
+
+```bash
+export HTTPS_PROXY=$(grep -ho "HTTPS_PROXY=[^ \"']*" ~/tools/init-ensure.sh | head -1 | cut -d= -f2-)
+TOKEN=$(cat ~/tools/laptop-agent-token)
+curl -sS --max-time 30 --proxy "$HTTPS_PROXY" http://100.99.113.103:4799/health \
+  -H "X-Agent-Token: $TOKEN"
+curl -sS --max-time 30 --proxy "$HTTPS_PROXY" http://100.99.113.103:4799/exec \
+  -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"cmds":[{"argv":["hostname"]}],"timeout_s":30}'
+# -> {"results":[{"exit":0,"stdout":"amd\n",...}]}
+```
+
+**T6 — raw ssh, written out in full (verified 2026-11-23).** This is
+exactly `~/tools/laptop-ssh-real.sh`; the relay `HTTPS_PROXY` above
+must be exported first (the helper reads it).
+
+```bash
+ssh -o "ProxyCommand=python3 $HOME/tools/laptop-proxy-connect.py" \
+  -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts_laptop" \
+  -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" \
+  -o ConnectTimeout=60 -o ConnectionAttempts=3 \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+  -o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-%r@%h:%p" -o ControlPersist=3600 \
+  user@100.99.113.103 'hostname'
+```
+
+Recorded horizon (Drew, 2026-11-23; not this codification): host
+selection and access without Tailscale; a direct iroh transport for
+non-Muse agents; a generic pooling system.
