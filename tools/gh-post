@@ -27,7 +27,19 @@ leg where they occur; they never fall through to the App or the outbox.
 Usage:
   gh-post comment --repo owner/name (--issue N | --pr N) --body-file F
   gh-post create  --repo owner/name --title T --body-file F [--label L ...]
+  gh-post note    --repo owner/name (--issue N | --pr N) --body-file F
+                  [--note-key K]
   gh-post check   --body-file F        (pre-post secret scan only)
+
+Live notes (dezren39/hatch#13, spec item 5 — structural reduction):
+`gh-post note` maintains ONE live note per (target, note key): the
+first call creates the comment, later calls EDIT it in place via the
+API, so a task's checkpoint trail is a single comment instead of one
+comment per checkpoint. Target: <= 2 comments per task (the claim
+comment + the live note). The note key defaults to $FLEET_JOB (or
+"gh-post"); the note carries a <!-- fleet-live-note:<key> --> marker.
+Note edits are ledgered as creations (the design's open question 2:
+assume PATCH counts toward the budget until proven otherwise).
 
 Pre-post secret scan (code#7072, 2026-11-09): every comment/create body is
 scanned BEFORE any posting leg. Credential-shaped text — env-dump shapes
@@ -54,6 +66,19 @@ the outbox", which is not a creation). The posted body carries a
 still be verified by search. If the ledger cannot be written, gh-post
 refuses to post at all (exit 5): unledgered filing is exactly the
 silent-success failure mode the ledger exists to kill.
+
+Content throttle (dezren39/hatch#13): every post also passes the
+shared throttle gate (tools/content-throttle) BEFORE the ledger
+reservation. The throttle ships warn-only — it logs what it would have
+delayed and delays nothing — until the mode is flipped after the
+one-week review (see tools/content-throttle/README.md). The circuit
+breaker is live in both modes: if the circuit is open, the user leg is
+treated as rate-limited WITHOUT being attempted (no spinning against
+a refusing API), and the ladder continues with the App leg / outbox.
+User-leg results feed the breaker: a post clears the failure count, a
+rate-limit counts toward the five that open the circuit. If the
+throttle itself is unavailable, gh-post refuses to post (exit 5) —
+never a silent fall-back to unthrottled filing.
 """
 
 from __future__ import annotations
@@ -130,6 +155,104 @@ def effective_body_file(body_file: Path, nonce: str) -> Path:
         f.write(raw.rstrip("\n") + f"\n\n<!-- fleet-nonce:{nonce} -->\n")
     atexit.register(lambda: os.path.exists(name) and os.unlink(name))
     return Path(name)
+
+
+# --- Content throttle (dezren39/hatch#13) ----------------------------------
+sys.path.insert(0, str(Path(__file__).resolve().parent / "content-throttle"))
+try:
+    import content_throttle
+    _THROTTLE_IMPORT_ERROR = None
+except Exception as _e:  # noqa: BLE001 — reported fatally at post time
+    content_throttle = None
+    _THROTTLE_IMPORT_ERROR = _e
+
+
+def throttle_acquire(kind: str, repo: str):
+    """Pass the throttle gate before posting; die(5/6) if it cannot.
+
+    Returns (throttle, circuit_until_iso_or_None, outcome_holder). The
+    slot is released via atexit with the holder's final outcome, so
+    every exit path (return, die, exception) releases exactly once.
+    When the circuit is open the acquire has already released its
+    slot; the caller must then treat the user leg as rate-limited
+    WITHOUT attempting it — the App leg is a different rate-limit
+    bucket (Drew's rule) and the outbox remains available.
+    """
+    if content_throttle is None:
+        die(f"content-throttle module unavailable "
+            f"({_THROTTLE_IMPORT_ERROR}); refusing to post unthrottled "
+            "(hatch#13)", 5)
+    try:
+        th = content_throttle.Throttle()
+    except content_throttle.ThrottleError as e:
+        die(f"content-throttle unavailable ({e}); refusing to post "
+            "unthrottled (hatch#13)", 5)
+    holder = {"outcome": "failed"}
+    job = os.environ.get("FLEET_JOB", "gh-post")
+    try:
+        slot = th.acquire(job, kind, repo)
+    except content_throttle.CircuitOpen as e:
+        return th, content_throttle.iso(e.open_until), holder
+    except content_throttle.ThrottleRefused as e:
+        die(str(e), 6)
+    except content_throttle.ThrottleError as e:
+        die(f"content-throttle acquire failed ({e}); refusing to post "
+            "unthrottled (hatch#13)", 5)
+
+    def _release():
+        try:
+            th.release(slot, holder["outcome"])
+        except Exception as ex:  # noqa: BLE001 — slot self-expires anyway
+            print(f"gh-post: WARNING: throttle slot {slot} release "
+                  f"failed ({ex}); it expires on its own",
+                  file=sys.stderr)
+
+    atexit.register(_release)
+    return th, None, holder
+
+
+def throttle_note_user_outcome(th, outcome: str) -> None:
+    """Feed the user leg's result to the circuit breaker (hatch#13).
+
+    Only called when the user leg actually ran: a posted result clears
+    the consecutive-failure count; a rate-limit result counts toward
+    the five that open the circuit. The App leg is a different bucket
+    and is not counted here.
+    """
+    try:
+        if outcome == "posted":
+            th.record_success()
+        elif outcome == "limited":
+            th.record_failure()
+    except content_throttle.ThrottleError as e:
+        print(f"gh-post: WARNING: circuit-breaker update failed ({e})",
+              file=sys.stderr)
+
+
+# --- Live notes (dezren39/hatch#13, spec item 5) -----------------------------
+def note_marker(key: str) -> str:
+    return f"<!-- fleet-live-note:{key} -->"
+
+
+def find_live_note(repo: str, number: int, key: str):
+    """The existing live-note comment object for (target, key), or None.
+
+    A failed list call dies visibly: guessing "not found" would create
+    a second live note, which is exactly what item 5 exists to end.
+    """
+    r = run(["gh", "api",
+             f"repos/{repo}/issues/{number}/comments?per_page=100"])
+    if r.returncode != 0:
+        die(f"live-note lookup failed: {(r.stderr or '')[-300:]}")
+    try:
+        items = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        die("live-note lookup returned unparsable JSON")
+    marker = note_marker(key)
+    for it in items:
+        if marker in (it.get("body") or ""):
+            return it
+    return None
 
 # --- Pre-post secret scan (code#7072) -------------------------------------
 # Findings name the pattern class and line number only — never the value.
@@ -376,6 +499,12 @@ def main() -> int:
     pi.add_argument("--title", required=True)
     pi.add_argument("--body-file", required=True)
     pi.add_argument("--label", action="append", default=[])
+    pn = sub.add_parser("note")
+    pn.add_argument("--repo", required=True)
+    pn.add_argument("--issue", type=int)
+    pn.add_argument("--pr", type=int)
+    pn.add_argument("--body-file", required=True)
+    pn.add_argument("--note-key")
     pk = sub.add_parser("check")
     pk.add_argument("--body-file", required=True)
     args = ap.parse_args()
@@ -396,21 +525,100 @@ def main() -> int:
     skip_user = os.environ.get("GH_POST_SKIP_USER") == "1"
     skip_app = os.environ.get("GH_POST_SKIP_APP") == "1"
 
+    if args.cmd == "note":
+        number = args.issue or args.pr
+        if not number:
+            die("note needs --issue N or --pr N")
+        key = args.note_key or os.environ.get("FLEET_JOB") or "gh-post"
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", key):
+            die(f"bad note key {key!r} (want [A-Za-z0-9_.-]+)", 2)
+        kind = "pr_comment" if args.pr else "issue_comment"
+        th, circuit_until, holder = throttle_acquire(kind, args.repo)
+        if circuit_until:
+            die(f"content-throttle circuit open until {circuit_until}; "
+                "park the task and resume after that time (hatch#13)", 7)
+        existing = find_live_note(args.repo, number, key)
+        raw = body_file.read_text(errors="replace")
+        if existing is None:
+            # First note on this target: create it through the ledger's
+            # verify-by-read path (it reserves/finalises its own row).
+            if content_ledger is None:
+                die(f"content-ledger module unavailable "
+                    f"({_LEDGER_IMPORT_ERROR})", 5)
+            marked = raw.rstrip("\n") + f"\n\n{note_marker(key)}\n"
+            try:
+                res = content_ledger.create_comment(
+                    args.repo, number, marked, pr=bool(args.pr),
+                    job=os.environ.get("FLEET_JOB", "gh-post"))
+            except content_ledger.CreateFailed as e:
+                die(f"live-note create failed (ledger row "
+                    f"{e.reservation_id}): {e.detail}")
+            except content_ledger.LedgerError as e:
+                die(f"content-ledger failure: {e}", 5)
+            throttle_note_user_outcome(th, "posted")
+            holder["outcome"] = "created"
+            print(f"posted (live note): {res.ref}")
+            return 0
+        # Later notes: edit the same comment in place. The edit is a
+        # content-generating call, so it is ledgered like a creation
+        # (design open question 2: assume PATCH counts).
+        led, row, nonce = ledger_reserve(kind, args.repo)
+        body = (raw.rstrip("\n") + f"\n\n{note_marker(key)}\n"
+                f"<!-- fleet-nonce:{nonce} -->\n")
+        fd, tmp = tempfile.mkstemp(prefix="gh-post-note-", suffix=".json")
+        with os.fdopen(fd, "w") as f:
+            json.dump({"body": body}, f)
+        atexit.register(lambda: os.path.exists(tmp) and os.unlink(tmp))
+        r = run(["gh", "api", "--method", "PATCH",
+                 f"repos/{args.repo}/issues/comments/{existing['id']}",
+                 "--input", tmp])
+        if r.returncode != 0:
+            detail = ((r.stderr or "") + (r.stdout or "")).strip()[-500:]
+            if is_limit(detail):
+                throttle_note_user_outcome(th, "limited")
+            ledger_finalize(led, row, "failed",
+                            detail=f"live-note edit failed: {detail}")
+            die(f"live-note edit failed: {detail}")
+        got = run(["gh", "api",
+                   f"repos/{args.repo}/issues/comments/{existing['id']}",
+                   "--jq", ".body"])
+        if got.returncode != 0 or got.stdout.rstrip("\n") != body.rstrip("\n"):
+            ledger_finalize(led, row, "failed",
+                            detail="live-note edit readback mismatch")
+            die("live-note edit could not be verified by read")
+        throttle_note_user_outcome(th, "posted")
+        ledger_finalize(
+            led, row, "created", ref=existing.get("html_url"),
+            detail=f"live-note edit of comment {existing['id']} "
+                   "(hatch#13 item 5)")
+        holder["outcome"] = "created"
+        print(f"edited (live note): {existing.get('html_url')}")
+        return 0
+
     if args.cmd == "comment":
         number = args.issue or args.pr
         if not number:
             die("comment needs --issue N or --pr N")
+        th, circuit_until, holder = throttle_acquire(
+            "pr_comment" if args.pr else "issue_comment", args.repo)
         led, row, nonce = ledger_reserve(
             "pr_comment" if args.pr else "issue_comment", args.repo)
         body_file = effective_body_file(body_file, nonce)
-        if skip_user:
+        if circuit_until:
+            outcome, detail = "limited", (
+                f"content-throttle circuit open until {circuit_until}; "
+                "user leg not attempted (hatch#13)")
+        elif skip_user:
             outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
         else:
             outcome, detail = leg_user_comment(args.repo, number, bool(args.pr), body_file)
+        if not skip_user and not circuit_until:
+            throttle_note_user_outcome(th, outcome)
         if outcome == "posted":
             # The user leg's own readback verified the exact posted body
             # (nonce included) — that read is the confirming read.
             ledger_finalize(led, row, "created", ref=detail)
+            holder["outcome"] = "created"
             return 0
         if outcome == "error":
             ledger_finalize(led, row, "failed", detail=detail)
@@ -429,6 +637,7 @@ def main() -> int:
                 detail=None if detail2.startswith("http")
                 else "posted via App leg; URL not in fleet-paperwork output",
                 actor="developing.today[bot]")
+            holder["outcome"] = "created"
             return 0
         print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
               file=sys.stderr)
@@ -442,17 +651,25 @@ def main() -> int:
         ledger_finalize(
             led, row, "failed",
             detail=f"user+app legs rate-limited; queued to outbox {ob}; "
-                   "creation not yet performed")
+                   "creation not yet performed"
+                   + (f"; user leg: {detail}" if circuit_until else ""))
         print(f"QUEUED {ob}")
         return 3
 
     # create
+    th, circuit_until, holder = throttle_acquire("issue", args.repo)
     led, row, nonce = ledger_reserve("issue", args.repo)
     body_file = effective_body_file(body_file, nonce)
-    if skip_user:
+    if circuit_until:
+        outcome, detail = "limited", (
+            f"content-throttle circuit open until {circuit_until}; "
+            "user leg not attempted (hatch#13)")
+    elif skip_user:
         outcome, detail = "limited", "GH_POST_SKIP_USER test hook"
     else:
         outcome, detail = leg_user_create(args.repo, args.title, body_file, args.label)
+    if not skip_user and not circuit_until:
+        throttle_note_user_outcome(th, outcome)
     if outcome == "posted":
         # The create leg trusts the returned URL; the ledger's standard
         # is stricter — confirm by read before recording success.
@@ -460,6 +677,7 @@ def main() -> int:
             args.repo, "issue", detail, nonce)
         if verified:
             ledger_finalize(led, row, verified, ref=detail)
+            holder["outcome"] = "created"
             return 0
         ledger_finalize(
             led, row, "failed",
@@ -483,6 +701,7 @@ def main() -> int:
             detail=None if detail2.startswith("http")
             else "posted via App leg; URL not in fleet-paperwork output",
             actor="developing.today[bot]")
+        holder["outcome"] = "created"
         return 0
     print(f"gh-post: App route failed too; enqueueing in the action outbox. ({detail2[:200]})",
           file=sys.stderr)
@@ -495,7 +714,8 @@ def main() -> int:
     ledger_finalize(
         led, row, "failed",
         detail=f"user+app legs rate-limited; queued to outbox {ob}; "
-               "creation not yet performed")
+               "creation not yet performed"
+               + (f"; user leg: {detail}" if circuit_until else ""))
     print(f"QUEUED {ob}")
     return 3
 
