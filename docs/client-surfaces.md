@@ -521,7 +521,7 @@ Settings panes:
   Allow/Ask/Deny. Deny blocks catalog search. Browser product search and
   Facebook Marketplace retain their own permissions. On Secure VMs
   there is no Shopping search row or connection-consent requirement.
-- Wallet: the wallet provider connection (Stripe Link and Shop Pay) with Add,
+- Wallet: the wallet provider connection (Link and Shop Pay) with Add,
   Disconnect, and one write-permission choice for creating spend
   requests. Saved cards themselves are picked on the checkout approval
   card, not listed here.

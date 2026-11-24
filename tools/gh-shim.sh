@@ -55,6 +55,14 @@ case "${1:-}" in
     ;;
 esac
 
+# Shim-level raw passthrough (Drewry, 2026-11-24): `gh --raw ...`
+# strips --raw and execs the real gh directly — the shim-side twin of
+# `fleet gh --raw ...`, for callers that only have `gh` in hand.
+if [ "${1:-}" = "--raw" ]; then
+  shift
+  exec "$REAL_GH" "$@"
+fi
+
 # Route marker: ~/tools/fleet-routes-ensure.sh health-probes the
 # fleet gh route (init prelude + 15-min keeper) and records the
 # verdict here. While it says "direct", the fleet route is down, so

@@ -72,3 +72,16 @@ export OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=1
 export OPENCODE_EXPERIMENTAL=1
 export OPENCODE_EXPERIMENTAL_ICON_DISCOVERY=1
 export OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT=1
+
+# 1Password backend for fleet-secrets (Requirement 5, 2026-11-24):
+# name the op vault in every shell so fleet-secrets' OpSource joins
+# the resolver chain (broker -> bws -> op). Config only, no network
+# I/O and no token here (startup-clean rule above): the token is
+# loaded at use time by ~/tools/op-env.sh, invoked from the
+# ~/tools/bin/fleet wrapper for `fleet secrets ...` calls.
+if [ -f "$HOME/.config/fleet/op-backend.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$HOME/.config/fleet/op-backend.env" 2>/dev/null
+  set +a
+fi

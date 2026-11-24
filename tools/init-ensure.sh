@@ -112,9 +112,17 @@ fi
     exec 9>"/home/hatch/.cache/secrets-broker/.broker-ensure.lock"
     if flock -n 9; then
       if [ -x /home/hatch/tools/fleet ] && [ -s /home/hatch/.config/secrets-broker/token ]; then
+        # FLEET_OP_VAULT (2026-11-24, Requirement 5): names the
+        # 1Password vault for fleet-secrets' OpSource; kept in sync
+        # with ~/.config/fleet/op-backend.env. The current broker
+        # build ignores it server-side (its refresh is Bitwarden-
+        # only); it is set here so a broker build with an op backend
+        # picks it up with no further seat change, in the same style
+        # as the Bitwarden wiring above.
         setsid nohup env PATH="/home/hatch/tools/bin:/home/hatch/tools:$PATH" \
           SECRETS_BROKER_BIND=127.0.0.1:4800 \
           SECRETS_BROKER_SOCKET="$SB_SOCK" \
+          FLEET_OP_VAULT=Dev \
           /home/hatch/tools/fleet serve secrets-broker \
           >>"$SB_LOG" 2>&1 </dev/null &
       fi
@@ -203,12 +211,23 @@ fi
 # exit contract.
 {
   SHIM=/home/hatch/tools/gh-shim.sh
+  # ~/tools/bin/gh is the durable-volume twin of the /usr/local/bin
+  # link; recreate it if missing/dangling (2026-11-24).
+  if [ -x "$SHIM" ] && [ "$(readlink -f /home/hatch/tools/bin/gh 2>/dev/null || echo none)" != "$SHIM" ]; then
+    ln -sfn "$SHIM" /home/hatch/tools/bin/gh
+  fi
   if [ -x "$SHIM" ] && [ -w /usr/local/bin ]; then
     if [ "$(readlink -f /usr/local/bin/gh 2>/dev/null || echo none)" != "$SHIM" ]; then
       ln -sfn "$SHIM" /usr/local/bin/gh
     fi
-    if [ ! -e /usr/local/bin/gh-orig ] && [ -x /home/hatch/.nix-profile/bin/gh ]; then
-      ln -sfn /home/hatch/.nix-profile/bin/gh /usr/local/bin/gh-orig
+    # gh-orig: nix-profile gh preferred; while nix is out that path
+    # dangles, so fall back to the packaged /usr/bin/gh (2026-11-24).
+    if [ ! -e /usr/local/bin/gh-orig ]; then
+      if [ -x /home/hatch/.nix-profile/bin/gh ]; then
+        ln -sfn /home/hatch/.nix-profile/bin/gh /usr/local/bin/gh-orig
+      elif [ -x /usr/bin/gh ]; then
+        ln -sfn /usr/bin/gh /usr/local/bin/gh-orig
+      fi
     fi
   fi
 } 2>/dev/null || true
