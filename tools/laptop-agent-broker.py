@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/fleet/laptop-agent-broker.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """laptop-agent broker — keeps warm connections to the laptop-agent
 daemon so single client calls skip the CONNECT handshake (code#5343).
 

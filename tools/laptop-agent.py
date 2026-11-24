@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/fleet/laptop-agent.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """laptop-agent client — talk to the laptop-agent daemon (code#5343).
 
 Primary transport (2026-11-15, code#10356): the named Cloudflare tunnel

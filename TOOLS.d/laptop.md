@@ -243,15 +243,57 @@ Semantics as fixed:
   beside each file (laptop daemon: laptop_agent.py.bak-20261110-
   timeout-fix + .bak2-20261110).
 
-## OpenCode revision pin + parity (code#1362, recorded 2026-11-14, task 5007)
-- Canonical rev: the running fleet service and the code repo agree —
-  service exe (pid on :13420) = `opencode 2.0.30+0f5561c`; developing-today/code
-  `flake.lock` opencode input = `0f5561c21cb84465cefef3881fa1d6f8eaa43a4d`
-  (developing-today-forks/opencode). That pair is the verified pin.
-- Known skew (fresh probe 2026-11-14, unchanged since the 2026-11-13
-  inventory): laptop CLI (system bin + ~/.local/bin) = c43145b; sandbox
-  CLI (/usr/local/bin/opencode) = 954ff7c; dezren39/darwin-nix flake.lock
-  opencode pin = b80e509. Three surfaces, three non-canonical revs.
+## Daemon death 2026-11-16 + AUTOMATIC SSH FALLBACK (code#2879)
+- The 2026-11-16 morning "tunnel down" episode was NOT a tunnel: the
+  laptop-agent daemon exited at 07:35:59 CT (SIGTERM, systemd
+  Result=success) after the pool.test storm, and Restart=on-failure
+  does not restart a "successful" exit. CF 502 + TS "proxy closed
+  during CONNECT" were the same corpse — every transport converges
+  on the one daemon at 100.99.113.103:4799. Unit now Restart=always
+  (hand-installed file ~/.config/systemd/user/laptop-agent.service,
+  backup .bak-20261116).
+- Drew's ruling (2026-11-16): the SSH fallback is AUTOMATIC.
+  ~/tools/laptop-agent.py request() now falls back to real SSH
+  (~/tools/laptop-ssh-real.sh) when all agent transports fail:
+  exec/exec-batch over SSH with identical result shape, health
+  synthesised, and jobs launched during an outage get `sshfb-` ids
+  (laptop spool ~/.local/state/laptop-agent/sshfb-jobs/) that stay
+  on the SSH path for poll/kill even after the daemon returns.
+  Disabled by a pinned LAPTOP_AGENT_TRANSPORT or
+  LAPTOP_AGENT_NO_SSH_FALLBACK=1. Backup:
+  ~/tools/laptop-agent.py.bak-20261116-sshfb. Also fixed en route:
+  tunnel_socket()'s sys.exit (a BaseException) escaped request()'s
+  except-Exception handling — the #9611 trap, client side.
+
+## OpenCode revision pin + parity (code#1362, refreshed 2026-11-16, task 5007)
+
+- Canonical rev: `5b65c2a21d2fadbdcdf58ed96f85563bc5d25966`
+  (developing-today-forks/opencode). Laptop parity HOLDS three ways —
+  running service exe
+  `/nix/store/bdkm7bd1gbx4i0cmk92zrzwc5x16ms00-opencode-2.0.30+5b65c2a/bin/opencode`
+  (service restarted 2026-11-16 02:24 CST) = `opencode v2.0.30+5b65c2a`;
+  laptop CLI (`~/.local/bin/opencode` wrapper execs
+  `/run/current-system/sw/bin/opencode`) = `v2.0.30+5b65c2a`;
+  developing-today/code `flake.lock` opencode input = `5b65c2a21d2f…`.
+  (Supersedes the 2026-11-14 record: canonical moved 0f5561c → 5b65c2a
+  via a code-flake update plus a service restart, not via the
+  darwin-nix/amd path below.)
+- Remaining skew (2026-11-16, laptop-verifiable): dezren39/darwin-nix
+  `flake.lock` opencode pin = `b80e509` (stale, separate repo — owns a
+  different host's config, not this laptop's `/run/current-system`).
+  Sandbox CLI re-probed 2026-11-16 (task 5007, lane any-c, from the
+  sandbox itself): still `2.0.30+954ff7c` — a MISMATCH vs canonical.
+  Its owning source is an ad-hoc nix profile element
+  (`packages.x86_64-linux.opencode` from
+  `github:developing-today/opencode/954ff7c9723c…` — note the
+  developing-today/opencode repo, not the forks repo the other pins
+  use), so aligning it is a sandbox `nix profile` move, not a repo
+  pin change. Also verified 2026-11-16: `b80e509` is NOT an ancestor
+  of `5b65c2a` (merge base `6c43550`); its #1791 fix is a one-line
+  aarch64-darwin node_modules hash correction specific to the
+  6c43550 tree, and `5b65c2a`'s own darwin hash is unverified — the
+  darwin-nix pin must not move until the aarch64-darwin build at
+  the canonical rev is verified.
 - Update procedure (QUIET WINDOW ONLY — a switch on amd can restart the
   socket-activated opencode.service and kill live fleet sessions):
   (1) bump the darwin-nix opencode pin to the canonical rev (or the rev
@@ -260,3 +302,116 @@ Semantics as fixed:
   CLI wrapper and the sandbox nix profile to the same rev, (4) re-probe
   all three surfaces (`opencode --version` + the service exe store path)
   and record the result on code#1362.
+- Still open on code#1362 (acceptance 2): a fleet health surface that
+  shows the actual running revision + mismatch without a manual version
+  command, with parity/mismatch tests. No such surface exists in the
+  code repo (checked 2026-11-16: no health/version probe under
+  `scripts/` or `pkgs/fleet/`).
+
+## LAPTOP ROUTE FORMS — CODIFIED 2026-11-23 (code#13717, PR #13773)
+
+The standing route order now lives here as a matrix of **eight literal
+forms**. Design record: code repo
+`doc/2026-11-23T21-18-54Z_design_laptop_route_forms/`. The fleet
+subcommands land with PR #13773; **the seat binary serves them only
+after the next fleet-static publish** — until then the seat's `fleet`
+answers the new domains as unknown, and the working fleet-shape client
+is still `laptop-agent.py` / the raw forms below.
+
+| Tier | Method | Shape | Literal command |
+|---|---|---|---|
+| T0 | tiered | fleet | `fleet laptop exec [--timeout S] -- cmd...` — walks T1 → T2 → T3, reports the serving tier |
+| T1 | commander | fleet | `fleet commander exec [--cwd D] --timeout S -- cmd...` |
+| T2 | http-direct | fleet | `fleet http exec [--cwd D] --timeout S -- cmd...` (daemon API, HTTP legs only — never ssh) |
+| T3 | ssh | fleet | `fleet ssh exec [--cwd D] --timeout S -- cmd...` |
+| T4 | commander | raw | curl recipe below against `https://commander.security.cab/mcp` |
+| T5 | http-direct | raw | curl recipe below to the daemon API via the relay proxy |
+| T6 | ssh | raw | the literal `ssh` invocation below (= `~/tools/laptop-ssh-real.sh`) |
+| T7 | wrapper | simplified | `laptop-ssh 'cmd...'` — **fallback + simplified tier (demoted, not removed)** |
+
+**Composition + doctrine.** Tier 0 first. It advances only when a tier
+fails to *serve* (transport/auth/connect or a tier-level timeout) —
+never on a served exit code — and names the serving tier. Tier 0 does
+NOT fall through to T7: when it fails, try the individual subcommands
+as their own commands (an attempt under T0's process shape is a
+different literal invocation), then the raw forms, then `laptop-ssh`.
+Circumstance decides the form; gate behaviour keys on the literal
+command shape, so **raw forms are first-class**: run them as written,
+never blended into a wrapper. Every result names its form
+(`form T2 http/fleet`). Timeouts are required by construction on every
+fleet form (T0: 120 s/attempt; T1: 120 s; T2/T3: 300 s defaults).
+
+**Why laptop-ssh is T7, and what the demotion must respect.** The
+demotion is documentation-and-defaults ONLY. `laptop-ssh.sh` is
+load-bearing: the heal/init stack (`laptop-channel-heal.sh`,
+`init-ensure.sh`) and crons delegate through it, lane habits use it,
+and its delegate (laptop-agent.py) carries the automatic SSH fallback
+for daemon-down recovery (2026-11-16 section above). Nothing that
+calls it today may break; do not "clean it up" into the fleet binary.
+
+**Proxy env caveat for the ssh forms (T3/T6), observed 2026-11-23:**
+the sandbox shell's default `HTTPS_PROXY` (the 3128 egress proxy)
+closes CONNECTs to the laptop — both `fleet ssh` and
+`laptop-ssh-real.sh` fail there with `Connection closed by UNKNOWN
+port 65535` / "proxy closed during CONNECT". The working value is the
+relay the channel stack itself runs: the `HTTPS_PROXY` that
+`~/tools/init-ensure.sh` sets (127.0.0.1:3130 relay). Export that
+value before T3/T6. (T1/T4 do not need it; T2's broker leg does not
+either.)
+
+**T4 — raw curl to the commander endpoint (verified 2026-11-23).**
+Bearer by name at call time, never filed; browser UA is mandatory
+(the edge 1010-blocks other agents); responses are SSE `data:` lines
+— pick the JSON-RPC message with your request id.
+
+```bash
+EP=https://commander.security.cab/mcp
+UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+BEARER=$(fleet secrets get desktop-commander.machine-bearer)
+# 1. initialize -> read Mcp-Session-Id from the response headers (-D file)
+curl -sS -D /tmp/hdrs --max-time 30 "$EP" \
+  -H "Authorization: Bearer $BEARER" -H "User-Agent: $UA" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"raw-curl","version":"1"}}}'
+SID=$(grep -i '^mcp-session-id:' /tmp/hdrs | tr -d '\r' | awk '{print $2}')
+# 2. notifications/initialized (same headers + "Mcp-Session-Id: $SID", no id)
+# 3. tools/call start_process {"command":"hostname","timeout_ms":3000} -> PID in the reply text
+# 4. poll tools/call read_process_output {"pid":PID,"timeout_ms":5000} until
+#    the reply text carries "Process completed with exit code N"
+```
+
+Session hygiene is part of the form: always poll to completion or
+`force_terminate` — a start without a poll leaves a process running
+on the laptop (the 2026-11-23 pile-up).
+
+**T5 — raw curl to the daemon API (verified 2026-11-23).** Token read
+from its file at call time; proxy = the relay value above.
+
+```bash
+export HTTPS_PROXY=$(grep -ho "HTTPS_PROXY=[^ \"']*" ~/tools/init-ensure.sh | head -1 | cut -d= -f2-)
+TOKEN=$(cat ~/tools/laptop-agent-token)
+curl -sS --max-time 30 --proxy "$HTTPS_PROXY" http://100.99.113.103:4799/health \
+  -H "X-Agent-Token: $TOKEN"
+curl -sS --max-time 30 --proxy "$HTTPS_PROXY" http://100.99.113.103:4799/exec \
+  -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"cmds":[{"argv":["hostname"]}],"timeout_s":30}'
+# -> {"results":[{"exit":0,"stdout":"amd\n",...}]}
+```
+
+**T6 — raw ssh, written out in full (verified 2026-11-23).** This is
+exactly `~/tools/laptop-ssh-real.sh`; the relay `HTTPS_PROXY` above
+must be exported first (the helper reads it).
+
+```bash
+ssh -o "ProxyCommand=python3 $HOME/tools/laptop-proxy-connect.py" \
+  -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts_laptop" \
+  -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" \
+  -o ConnectTimeout=60 -o ConnectionAttempts=3 \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+  -o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-%r@%h:%p" -o ControlPersist=3600 \
+  user@100.99.113.103 'hostname'
+```
+
+Recorded horizon (Drew, 2026-11-23; not this codification): host
+selection and access without Tailscale; a direct iroh transport for
+non-Muse agents; a generic pooling system.

@@ -1,3 +1,4 @@
+# Canonical: developing-today/code pkgs/deploy/ — the deploy registry (services.nix quota-recorder target, with its timer field) renders the live units; this hatch unit is the superseded hand-copied source.
 [Unit]
 Description=Run the quota recorder every 5 minutes
 

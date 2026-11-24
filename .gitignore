@@ -1,0 +1,396 @@
+# === Nix store (binaries, large) ===
+nix-persist/
+
+# === User private files ===
+user/
+
+# === Logs and telemetry ===
+logs/
+
+# === System dot dirs (caches, configs, keys) ===
+.bun/
+.cache/
+.config/
+.local/
+.npm/
+.pki/
+.ssh/
+.rustup/
+.nix-defexpr/
+.nix-portable/
+.nix-profile
+.postgres-ready
+.hatch-db-change-signals
+.vnc/
+.Xauthority
+runtime.lock
+
+# === Toolchain binaries (reinstalled via scripts) ===
+tools/go/
+tools/cargo/
+tools/rustup/
+tools/nix-portable
+
+# === Large archives ===
+tools/*.tar.gz
+tools/*.tar.zst
+tools/*.prev
+*.tar.zst
+
+# === Compiled artifacts (source is tracked) ===
+tools/taint-shim/*.so
+tools/taint-shim/*.o
+
+# === Test directories ===
+captest/
+taint-test/
+tools/chowntest
+
+# === Personal / sensitive (never track) ===
+MEMORY.md
+USER.md
+PROACTIVE_PREFERENCES.md
+SOUL.md
+IDENTITY.md
+HEARTBEAT.md
+AGENTS.md
+
+# === Private repo (~/hatch-personal, symlinked back into this tree) ===
+# The symlinks above/below resolve into hatch-personal; never track either.
+/hatch-personal/
+# (slash-less: also matches the symlinks, which trailing-slash patterns miss)
+/memory
+/dreams
+/logs
+/user
+
+# === Platform runtime state ===
+# agents/ contains subagent execution records (sessions.json metadata +
+# .jsonl transcripts). Too sensitive for git — never track.
+agents/
+assets/
+config/
+data/
+dreams/
+hooks/
+memory/
+subscriptions/
+workspace/*
+!workspace/avatars/
+!workspace/avatars/*
+# Supabase muse-dev tree (migrations, functions, backup tooling) IS versioned
+# per Drew 2026-10-25: everything not huge belongs in git.
+!workspace/supabase/
+!workspace/supabase/**
+workspace/supabase/**/__pycache__/
+# Private-only per workspace policy 2026-10-21 (infrastructure identifiers /
+# personal research corpus) — canonical copies in hatch-personal
+# workspace/imported/2026-10-25/supabase/. Re-ignored AFTER the negations
+# above so these paths stay out of the public repo (audit 2026-10-25).
+workspace/supabase/ainventory-import/sheets/
+workspace/supabase/ainventory-import/source/
+# (same two paths as SYMLINKS into hatch-personal — dir patterns above do
+# not match symlinks, so ignore the link paths too; relocated 2026-10-25)
+workspace/supabase/ainventory-import/sheets
+workspace/supabase/ainventory-import/source
+workspace/supabase/ainventory-import/SOURCE_SUMMARY.json
+workspace/supabase/muse-dev/backup/config.json
+go/
+
+# === Platform docs (Meta maintains them, but we track them to see changes) ===
+# (docs/ is tracked)
+
+# === Generated data (regenerable, too big for git) ===
+notes/disk-listings/
+.codedb/
+bin/
+git/
+
+# === Dispatcher runtime state (stubs, cache, locks — regenerated on use) ===
+tools/bin/
+tools/dispatcher/cache/
+.nix-repair.lock
+.gitconfig
+.gitconfig.bak*
+
+# mcp-remote OAuth token cache (secrets, machine-local)
+.mcp-auth/
+/notes/TODO.md
+
+# === Secrets & tool-state dotdirs (2026-10-25) ===
+# Secret values on disk — never track; restored from Bitwarden by tooling.
+/tools/secrets.d/
+
+# Credential-handling scripts are TRACKED (Drew 2026-10-25: they handle
+# secrets but hold no values — audited; values live in Bitwarden only).
+
+# Tool-state dotdirs/files: live tokens, session state, logs, caches.
+# Ignored wholesale; audited pure-config files unignored individually below.
+.claude.json
+.zcompdump
+.dbus/
+.supabase/
+.commandcode/
+.opencode-mem/
+.turso/
+.wrangler/
+
+# --- .claude/: all ignored except audited clean config (settings + hooks) ---
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/codedb-block-legacy.sh
+!.claude/hooks/codedb-warmup.sh
+
+# --- .codex/: all ignored except audited clean config ---
+.codex/*
+!.codex/config.toml
+
+# --- .gemini/: all ignored except audited clean config ---
+.gemini/*
+!.gemini/settings.json
+
+# === Untracked review 2026-10-29: logs, caches, installed tools, scratch ===
+/*.log
+/*.out
+.cargo/
+.docker/
+.claude-server-commander/
+/Library/
+node_modules/
+attic-server.db
+attic-storage/
+backups/
+fleet-scratch/
+fleetwork/
+fod-*/
+code-wt-*/
+imports/
+/tmp-*
+/tmp/
+/tmp_*
+/,
+/32
+/Vec
+/code
+/skip
+/result-dev
+/t1.json
+/probe-*
+/pr*-body.md
+/module_info*
+/metrics*
+tools/1password-cli/
+tools/attic/
+tools/claude-code/
+tools/command-code/
+tools/ms-playwright/
+tools/rdlibs/
+tools/rustdesk-deb/
+tools/cf/node_modules/
+tools/wrangler/node_modules/
+tools/playwright-test/node_modules/
+tools/__pycache__/
+tools/**/*.bak-*
+tools/**/*.orig-*
+tools/*/JOB-BODY.md
+tools/claude-code-proxy/sessions.json
+tools/commandcode-proxy/sessions.json
+tools/muse-proxy/work/
+tools/quota-check/state.json
+tools/quota-check/snapshots-*.jsonl
+tools/runtime-db-export/state.json
+tools/runtime-db-export/__pycache__/
+tools/runtime-db-export/progress/*.log
+tools/runtime-db-export/progress/*.json
+tools/runtime-db-export/progress/run*/
+/fod-*.md
+tools/**/*.bak
+tools/cf/package.json
+tools/cf/package-lock.json
+tools/wrangler/package.json
+tools/wrangler/package-lock.json
+tools/playwright-test/
+
+# review 2026-10-30: root scratch Go test snippet (mcpx flag-enumeration probe dump, not hatch source)
+/dummy
+
+# review 2026-10-31: secret-bearing device identity (never git), root scratch/probe
+# files, fleet lane scratch, and multi-GB Supabase restore dumps (backup lane, not git)
+/.secrets/
+/Str
+/x
+/probe_main.go
+/probe_test.go.bak
+/scratch-lane-d/
+workspace/supabase/restore-prep/
+
+# review 2026-11-01: root scratch/err dumps, staging test copies, Jules/Snap-gap
+# scratch caches, a hatch-personal worktree checkout, and the personal-data
+# home-domain migration (Lane 2, private only — never public)
+/=
+/expand-tests-staging.ts
+/lsremote-r27-*.err
+/prlist-*-r27.err
+/jules_work/
+/snap_gap_work/
+/tmp4786/
+/worktrees/
+workspace/supabase/muse-dev/migrations/0018_home_domain.sql
+
+# review 2026-11-02: root probe scripts, a queue-scan output dump, a PR-body
+# draft, and code-repo source spill (plaza guest host pair; real home is a
+# code worktree, kept on disk — scratch in hatch, not hatch source)
+/agy-probe.mjs
+/probe1.sh
+/queued-scan.json
+/pr5813.md
+/guest.ts
+/manifest.ts
+
+# review 2026-11-03: root queue-payload/output dumps and probe scripts from
+# fleet lane work, fleet build-lock state, a local timetrap DB, and the
+# wf-surgery scratch tree (copies of other repos' workflows, kept on disk)
+/ckpt*.json
+/claim*.json
+/complete*.json
+/enq*.json
+/park*.json
+/heartbeat-verify.json
+/quota2.txt
+/probe.ts
+/probe_*.rs
+/.fleet-build-locks/
+/.timetrap.db
+/wf-surgery/
+tools/laptop-agent-token
+tools/queue-broker-token
+tools/secrets-broker-token
+tools/repo-queue
+
+# review 2026-11-04: root fleet-lane scratch/output dumps (claim/audit/lane/shift
+# notes, a stray empty "{" file, the wks/ lane scratch tree), the built
+# fleet ELF + fleet-brokers Rust target dir, and rustdesk-gl evidence
+# screenshots (text source committed; PNGs are ephemeral captures)
+/claim_v.err
+/claimed_*.txt
+/parked_audit.txt
+/lane*.txt
+/shift-*.txt
+/duty4-note.md
+/{
+/wks/
+/tools/fleet
+tools/fleet-brokers/target/
+tools/rustdesk-gl/shot-*.png
+tools/rustdesk-gl/crop-*.png
+
+# review 2026-11-05: root fleet-lane scratch (ck task payloads, agent notes,
+# queue output/err dumps, ls-remote dumps, websocket probe script), fleet
+# lane scratch trees, built fleet binary backups, runtime-db-export lock
+/ck[0-9]*.json
+/note[0-9]*.md
+/done.txt
+/tasks-out.txt
+/tasks.err
+/issues-*.err
+/lsrem-*.txt
+/probe_*.py
+/lane-s-tools/
+/lane-v/
+/lanev-work/
+/scratch-lane-i/
+tools/fleet.*-bak
+tools/runtime-db-export/state.lock
+
+# review 2026-11-06: root fleet-lane scratch (claim/park/handoff payload
+# dumps, agent-note drafts, one-off edit scripts, ls-remote/PR-list dumps,
+# lane scratch trees), empty marker files, tools/ one-off lane helpers,
+# and the ask-ledger bytecode cache
+/.todo
+/claim-o-*.err
+/claim-o-next.sh
+/claim_loop_o.sh
+/diag-*.md
+/edit-*.py
+/hb.json
+/hb.err
+/hb[0-9]*.*
+/health.txt
+/lane-*/
+/lane_*/
+/lane-*.json
+/lane-*.sh
+/scratch-*/
+/shift-*-work/
+/lsrem-*.err
+/note.md
+/park[0-9]*.err
+/pk.json
+/prlist-*.err
+/prlist-*.json
+/signal.json
+tools/ask-ledger/__pycache__/
+tools/claim-once.sh
+tools/handoff.sh
+
+# review 2026-11-07: root fleet-lane scratch (mirror progress log,
+# heartbeat note, empty fail/runs err dumps, stray copy of an
+# opencode-repo test file)
+/a-progress.txt
+/acp-test-main.mjs
+/fail-*.err
+/runs-*.err
+/hb-*.md
+
+# review 2026-11-08: root fleet-lane scratch (quota-provider module copies
+# dropped at root — they import ../types.js, canonical home is the opencode
+# repo, not hatch; one-off turso query script; mail/usage probe scripts)
+/claude.ts
+/cline-pass.ts
+/command-code.ts
+/meta.ts
+/opencode-go.ts
+/opendesign.ts
+/turso.ts
+/turso_q.py
+/probe.mjs
+/probe_usage_state.mjs
+
+# review 2026-11-10: root runtime DB placeholder (0-byte muse.db,
+# machine-created, no data)
+/muse.db
+
+# review 2026-11-11: root fleet-lane scratch (one-off quota probe script,
+# one-off task SQL query, lane PR-body draft, stray 0-byte file)
+/qx.py
+/t11349.sql
+/lane-any-d-14924-pr-body.md
+/text
+
+# review 2026-11-12: root fleet-lane scratch (two stray 0-byte files from
+# shell/quoting accidents, one generated board-placement report JSON)
+/89%
+/u64::MAX
+/board_place2_report.json
+
+# review 2026-11-13: root machine-generated logs (fleet census probe
+# stderr capture, stray root orchestrator repair log; the real
+# orchestrator log lives under workspace/goals/)
+/census*.err
+/orchestrator-log.md
+
+# review 2026-11-14: root fleet-lane scratch (stray supervision check-in
+# text dropped at root, generated repo-queue signal JSON, stray 0-byte
+# file) and a one-off lane enqueue helper script in tools/
+/invalid
+/repo-queue-signal-nix.json
+/zzt.txt
+tools/lane-code-a-enqueue-6277.py
+
+# review 2026-11-16: CF Access credential file for laptop-agent (contains
+# a client secret - never commit anywhere) and the 1.1GB zero-filled
+# GGUF placeholder fixture (sparse, machine-generated stand-in)
+/tools/laptop-agent-cf-access.json
+/tools/models/qwen2.5-1.5b-instruct-q4_k_m.gguf

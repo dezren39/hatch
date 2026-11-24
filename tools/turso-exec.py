@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Canonical: developing-today/code pkgs/fleet/turso-exec.py — edit the canonical source there; this hatch copy is a deployed seat copy.
 """Run SQL against a Turso DB via Platform API token -> DB token -> libSQL pipeline.
 Usage: turso-exec.py <db-name> <sql-file>
 Reads platform token from ~/.config/turso/settings.json. Prints pipeline JSON results.

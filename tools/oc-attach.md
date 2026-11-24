@@ -1,5 +1,7 @@
 # oc-attach — attach-first OpenCode client for fleet workers
 
+> Canonical: developing-today/code `scripts/oc-attach.md` (tool: `scripts/oc-attach.py`) — this hatch copy is a deployed seat copy.
+
 `~/tools/oc-attach.py` (symlinked as `~/tools/oc-attach`) is the single
 documented entry point for programmatic OpenCode work against the
 laptop's background service (developing-today/code#1357). Stewardship

@@ -4,7 +4,7 @@ Use this reference for questions about Wallet limits, Link protections, cancella
 
 ## Capabilities and limits
 
-- Shop Pay pays direct UCP and native Shopify browser checkouts in supported currencies when the checkout identifies the currency and the selected method is supported. Its virtual card route at other merchants pays only a purchase in US dollars that the merchant does not charge again later.
+- Shop Pay supports checkouts in US dollars, Canadian dollars, Mexican pesos, euros, Singapore dollars, Japanese yen, and British pounds when the checkout identifies the currency and the selected method is supported.
 - For Link, copy the three-letter currency identifier stated by the checkout without conversion. Do not infer a currency from a symbol such as `$`.
 - `wallet.get_user_info` reports Link's current per-purchase limit and the amounts remaining in its daily and thirty-day windows. Read those values again for a new question instead of quoting an earlier result. A missing limit does not establish a cap.
 - When Link balance is available, a provider approval policy can cover eligible purchases within its per-purchase limit. Cart review and other approval conditions still apply. Other purchases require route-specific approval or a scheduled task's standing Allow (see below). When available, `permissions.preapprove` can approve one browser order within saved purchase terms and a total cap, paid with a merchant-saved method or an eligible wallet card. The checkout agent selects payment and the main agent reviews the cart against the approved terms.
@@ -25,7 +25,7 @@ Check [Link's protection terms](https://support.link.com/questions/what-s-covere
 
 ## Cancellations, refunds, and subscriptions
 
-- Confirm payment cancellation from the checkout result. Closing a browser task or revoking purchase preapproval does not itself void an issued card. A confirmed Link payment cancellation voids its one-time card; a hold may take time to release. Resolve any uncertain order before replacement payment.
+- Confirm payment cancellation from the checkout result. Closing a browser task or revoking purchase preapproval does not itself void an issued card. A confirmed Link payment cancellation voids its virtual card; a hold may take time to release. Resolve any uncertain order before replacement payment.
 - A completed charge has no Wallet refund button. Help the user follow the merchant's refund or cancellation process. After submission, the merchant decides whether the order can still be stopped.
 - Link protections may apply separately from the merchant's return policy. Describe both without promising an outcome.
 - A Wallet credential does not authorize an unrequested trial, renewal, or subscription. The terms shown in the merchant checkout control what the user is accepting.

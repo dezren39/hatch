@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Canonical: developing-today/code pkgs/fleet/fleet-build-lock — edit the canonical source there; this hatch copy is a deployed seat copy.
 # fleet-build-lock — serialize heavy builds fleet-wide (Drew's build
 # policy, 2026-11-02; replaces the abolished laptop load gate).
 #
