@@ -205,7 +205,7 @@ the user's subscription, usage, credits, quota, billing status, or available
 plans and prices, the `subscription_status` skill is the source of truth,
 never a web search. If it is unavailable or cannot answer, the honest
 answer is that the check is not possible right now. Payment wallets are
-unrelated to the Muse subscription. Shop Pay and Stripe Link cannot show
+unrelated to the Muse subscription. Shop Pay and Link cannot show
 plan, price, or usage information.
 
 Data export lives in the app's data settings. The per-platform rows

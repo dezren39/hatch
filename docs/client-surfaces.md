@@ -149,7 +149,7 @@ is running.
 
 ### Tabs (variations per platform below)
 
-Every surface has Chat, Feed, Ideas, Goals, and Library. Chat search exists on every surface (see Chat search below). Web also answers a direct /artifacts URL.
+Every surface has Chat, Feed, Ideas, Goals, and Library. Chat search exists on every surface (see Chat search below). Web also answers a direct /artifacts URL. Dictation (speaking a message with the composer) also exists on every surface.
 
 - **Feed:** short posts you write for the user on a schedule,
   guided by the feed prompt. A brand-new reader's feed opens with a fixed
@@ -320,6 +320,13 @@ A Subscription card (usage meter, manage and upgrade) sits at the top of Setting
 
 Note: No Default Assistant, and no Hologram or camera-roll sync setting. The Muse app has no built-in biometric or Face ID app lock on iOS (that setting is Android-only); locking the app on iPhone happens through the phone's own controls.
 
+### Home Screen widgets
+
+Long press an empty spot on the Home Screen, tap Edit, then tap Add Widget.
+Search for Muse and tap Add Widget. The widgets are Muse, Chats, Shortcuts,
+Feed, and Glass. Glass needs iOS 26 or later. There is no widget for a
+single space.
+
 ### Paired devices
 
 iPhone pairs with: health data, HomeKit, Apple Reminders. There is no find-my-phone on any platform. No alarm commands (alarms are Android-only). Nothing available before pairing. Always check `device.describe` first.
@@ -327,12 +334,6 @@ iPhone pairs with: health data, HomeKit, Apple Reminders. There is no find-my-ph
 ### Sharing
 
 Users long-press a message to share it. The in-app share sheet offers the system sheet, Copy link, the OS Messages app, Threads, WhatsApp, Messenger, Instagram Direct, Instagram Stories, and X. Publishing an artifact follows the approval rules in `~/docs/artifacts.md`.
-
-### Home Screen widget
-
-iPhone - To add the widget to your home screen, long press an empty spot on the iPhone Home Screen, tap Edit, then Add Widget. Search for Muse and tap Add Widget.
-
-Android - the Muse Android app Settings has an "Add to home screen" row that pins a shortcut with your avatar and name.
 
 ---
 
@@ -382,6 +383,27 @@ account"), in this order:
 - Log out
 
 Note: No Hologram, camera-roll sync, or iMessage shortcut.
+
+### Home screen widgets and shortcuts
+
+Long press an empty spot on the home screen, tap Widgets, then tap Muse. The
+widgets are Space, Ideas, Feed, Goals, Ask bar, and Avatar. Feed is listed
+only when the account has Feed.
+
+The Space widget shows one of the user's own spaces. Spaces shared with the
+user can't be picked. After adding the widget, the user picks the space.
+The widget shows a snapshot of the space with its title, when it was last
+updated, and a refresh button. It refreshes on its own about every 30
+minutes. Tapping it opens the space in the app. The user can't scroll or
+use the space from the home screen. To show a different space, long press
+the widget and pick another.
+
+A space's menu has Add widget and Add shortcut. Add widget puts a Space
+widget for that space on the home screen. Add shortcut pins an icon that
+opens the space. To open the menu, long press the space in Library, or tap
+its more options button in the side panel, on its card in chat, or on the
+space's own screen. Add widget shows only for the user's own spaces that
+are done building, and only on launchers that support it.
 
 ### Paired devices
 
@@ -499,7 +521,7 @@ Settings panes:
   Allow/Ask/Deny. Deny blocks catalog search. Browser product search and
   Facebook Marketplace retain their own permissions. On Secure VMs
   there is no Shopping search row or connection-consent requirement.
-- Wallet: the wallet provider connection (Stripe Link and Shop Pay) with Add,
+- Wallet: the wallet provider connection (Link and Shop Pay) with Add,
   Disconnect, and one write-permission choice for creating spend
   requests. Saved cards themselves are picked on the checkout approval
   card, not listed here.

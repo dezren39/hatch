@@ -3,43 +3,22 @@
 Short, durable notes that make external tools work reliably in this
 particular setup: device nicknames, host aliases, preferred voices, and
 environment-specific quirks. Skills describe how tools work in general; this
-file holds only what is unique here.
+file holds only what is unique here. Leave it empty until there is something
+worth recording.
 
-SPLIT 2026-10-25 (token review #2): the detail moved verbatim to `~/TOOLS.d/`
-topic files — this index keeps only the always-needed facts and pointers.
-Read the topic file before doing that kind of work; do not guess from the
-one-liners.
+## Sandbox network quirk (found 2026-11-22, #12488; corrected by Drewry 22:20 CST; mechanics verified 22:24–22:31 CST)
 
-## Always-needed facts
-- Persistent storage: ONLY `/home/hatch` survives a sandbox recycle; `/tmp`
-  is a 512M tmpfs; mount namespaces are per-exec. Detail: TOOLS.d/sandbox.md
-- Go: `~/tools/go/bin/go`; builds need `TMPDIR=/home/hatch/tmp` (and
-  `GOTMPDIR` for tests). Rust: `CARGO_HOME=~/tools/cargo RUSTUP_HOME=~/tools/rustup`.
-  Detail: TOOLS.d/toolchains.md
-- Nix: ALWAYS `LD_PRELOAD=~/tools/taint-shim/taint_shim.so`; /nix is a symlink
-  to ~/nix-persist; `nix` on PATH is a self-healing wrapper; NEVER bare
-  `nix profile add .` and never a symlink as `--profile`. Detail: TOOLS.d/nix.md
-- omnibin: `nix run github:fzakaria/omnibin` (with the taint-shim preload);
-  `which` queries need no FUSE. Detail: TOOLS.d/nix.md
-- Secrets: `fleet secrets get <name>` is the default route (broker-first,
-  Bitwarden fallback inside the verb); direct Bitwarden via `~/tools/bws-env.sh`
-  is emergency-only; 1Password via `source ~/tools/op-env.sh`. Values are
-  referenced by name only, never written to files. Detail: TOOLS.d/secrets.md
-- Tool output in this environment has been FABRICATED before — verify
-  consequential facts with a second independent call. The read tool can also
-  serve stale snapshots of frequently-appended files. Detail: TOOLS.d/agent-quirks.md
-- Laptop SSH: use ~/tools/laptop-ssh.sh (connection multiplexing; stock
-  MaxStartups drops burst pre-auth setups — root-caused 2026-10-25).
-  Detail: TOOLS.d/laptop.md
-
-## Topic files (~/TOOLS.d/)
-- toolchains.md — Go/Rust gotchas, bash wrapper, program@version dispatcher
-- nix.md — the symlinked-store setup, nix-ensure/repair, profile rules, omnibin
-- sandbox.md — filesystem/recycle model, init.sh races
-- git.md — credential helper, repo layout (which tree is whose)
-- agent-quirks.md — read-tool staleness, output fabrication, exec stdin vs heredoc
-- mcpx.md — mcpx daemon notes
-- secrets.md — Bitwarden Secrets Manager + 1Password service accounts
-- opencode.md — OpenCode server on this sandbox + the v2 migration state
-- laptop.md — laptop SSH drops (MaxStartups) and the multiplexing fix
-- memory-cli.md — the mem CLI: append/search memory + topics without reading them
+UDP from this sandbox is **permission-gated, not banned**. The gate is the
+"Direct network protocols" screen (Settings → Permissions): Drewry set the
+UDP row to Ask, and a **connected** UDP flow (`connect()` then send/recv)
+raises a per-destination approval; Felix requested it 2026-11-22, Drewry
+approved, and connected UDP then worked — verified with real DNS replies
+from 8.8.8.8:53 and a loopback exchange. **Unconnected `sendto` is still
+EPERM everywhere** (loopback and egress) — the sandbox profile denies that
+form outright and no approval covers it. So: tools that use connected UDP
+sockets work here after a one-time per-destination approval; tools that
+send on unconnected sockets (the pattern PR #12865's id-worlds capability
+probe checks, and the pattern quinn-style transports use) still cannot —
+don't chase those failures as load or flakiness. Sandbox cargo works via
+the direct rustup toolchain path (`~/.rustup/toolchains/1.99.0-…/bin`);
+the `~/tools/bin` dispatcher shim can hang.

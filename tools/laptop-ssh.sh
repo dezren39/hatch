@@ -27,7 +27,8 @@
 # (tail kept) and the daemon caps a synchronous exec at 600 s — for
 # longer work use the agent's detached jobs (run / poll) directly.
 #
-# What does NOT delegate (falls back to real SSH, stdin untouched):
+# What does NOT delegate (falls back to the recovery SSH path —
+# `fleet proxy ssh`, see below — stdin untouched):
 #   - LAPTOP_SSH_REAL=1 in the environment (the daemon-down recovery
 #     path; also the explicit escape hatch for any shape below)
 #   - no arguments (interactive session) or a leading ssh option
@@ -45,27 +46,45 @@
 # process group via the daemon (/cancel), and exits 124. The shim's
 # own LAPTOP_SSH_TIMEOUT (default 600) is the DAEMON-side cap for the
 # remote command; the client's local backstop is that + 15 s. The
-# real-SSH fallback path cannot cancel remotely (sshd owns the remote
+# fallback path cannot cancel remotely (sshd owns the remote
 # process) — `timeout` there bounds only the local wait; see
 # TOOLS.d/laptop.md.
 #
-# The preserved original SSH implementation is
+# The preserved original SSH implementation,
 # ~/tools/laptop-ssh-real.sh (byte-identical to the pre-retirement
-# shim, md5 95f647590274779bcaef7ea9a66f0670).
+# shim, md5 95f647590274779bcaef7ea9a66f0670), is no longer invoked
+# by this shim since the code#5972 step-3 cutover (2026-11-22): the
+# recovery fallback is the shipped `fleet proxy ssh` verb (code#5697
+# route ii, PR #6403), which pins the same destination, identity,
+# host-key policy, timeouts and ControlMaster itself. The verb needs
+# the tailnet proxy env (~/.local/state/tailscale/fleet-proxy.env,
+# 127.0.0.1:3130) — the sandbox's ambient egress proxy closes the
+# CONNECT — so fallback_ssh() sources that env when present.
+# laptop-ssh-real.sh stays on disk until the step-3 retirement
+# (laptop-agent.py's own SSH fallback transport still execs it).
 set -uo pipefail
 
-REAL="$HOME/tools/laptop-ssh-real.sh"
 AGENT="$HOME/tools/laptop-agent.py"
+
+# Recovery fallback: the shipped fleet verb, caller's ssh args
+# verbatim after `--` (the same args laptop-ssh-real.sh appended
+# after its fixed destination).
+fallback_ssh() {
+  if [ -r "$HOME/.local/state/tailscale/fleet-proxy.env" ]; then
+    . "$HOME/.local/state/tailscale/fleet-proxy.env"
+  fi
+  exec "$HOME/tools/fleet" proxy ssh -- "$@"
+}
 TIMEOUT="${LAPTOP_SSH_TIMEOUT:-600}"
 
 if [ "${LAPTOP_SSH_REAL:-}" = "1" ]; then
-  exec "$REAL" "$@"
+  fallback_ssh "$@"
 fi
 if [ "$#" -eq 0 ]; then
-  exec "$REAL" "$@"
+  fallback_ssh "$@"
 fi
 case "$1" in
-  -*) exec "$REAL" "$@" ;;
+  -*) fallback_ssh "$@" ;;
 esac
 
 cmd="$*"
@@ -118,16 +137,16 @@ $delim"
     ;;
 esac
 
-# --- stdin carrying data for the remote command -> real SSH.
+# --- stdin carrying data for the remote command -> recovery fallback.
 if [ ! -t 0 ]; then
   if [ -f /dev/stdin ] && [ -s /dev/stdin ]; then
-    exec "$REAL" "$@"
+    fallback_ssh "$@"
   fi
   if [ -p /dev/stdin ]; then
     peek=$(mktemp)
     if timeout 0.2 dd if=/dev/stdin of="$peek" bs=1 count=1 2>/dev/null \
        && [ -s "$peek" ]; then
-      cat "$peek" - | "$REAL" "$@"
+      cat "$peek" - | fallback_ssh "$@"
       rc=${PIPESTATUS[1]}
       rm -f "$peek"
       exit "$rc"

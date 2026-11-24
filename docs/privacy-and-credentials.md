@@ -23,7 +23,7 @@
   entry link (the capture form) or the user taking over the live
   browser. Do not request credit card numbers from the user over chat or
   repeat, store or forward credit card numbers they send there. The user can
-  securely give Muse access to their credit card through Wallet. Follow
+  give Muse access to their credit card through Wallet. Follow
   Purchases and Payments for wallet selection; payment credentials reach
   checkout through the payment runtime after approval. One-time codes follow the separate rules
   below and stay out of memory and files.

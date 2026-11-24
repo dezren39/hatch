@@ -1,4 +1,8 @@
 #!/bin/bash
+# muse-bootstrap: restore deploy-target units after a recycle (code#5770)
+[ -x /home/hatch/tools/deploy-restore.py ] && { /home/hatch/tools/deploy-restore.py >>"$HOME/logs/deploy-restore.log" 2>&1 || true; }
+# muse-bootstrap: bring the tailnet back after a recycle (scripts/muse/bootstrap.sh)
+[ -x /home/hatch/tools/muse-boot.sh ] && { /home/hatch/tools/muse-boot.sh || true; }
 # ~/tools/init.sh — boot/init restore for the agent sandbox.
 # Restores ephemeral state (system users, /nix symlink, wrappers, ...)
 # after the sandbox is recycled. Idempotent: safe to run any time; skips work
@@ -263,8 +267,14 @@ fi
 # Same pattern as above; the units + installer live in hatch-personal
 # (scripts/charge-inputs-fetcher). Stages Plaid/Gmail CLI responses and
 # pushes them to the laptop charge-candidates producer (code#4641).
+# STOPPED by Drew's order 2026-11-21 (background Gmail reads + per-email
+# approval cards). The disable marker below keeps init from reinstalling
+# it; to re-enable: rm ~/.config/charge-inputs-fetcher.disabled, then run
+# the installer once.
 CF_DIR=/home/hatch/hatch-personal/scripts/charge-inputs-fetcher
-if [ -x "$CF_DIR/install.sh" ]; then
+if [ -f /home/hatch/.config/charge-inputs-fetcher.disabled ]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: charge-inputs-fetcher disabled by marker; skipping" >> "$LOG"
+elif [ -x "$CF_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet charge-inputs-fetcher.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring charge-inputs-fetcher timer" >> "$LOG"
     timeout 120 "$CF_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
@@ -412,21 +422,6 @@ if [ -x "$SM_DIR/install-mirror-units.sh" ]; then
   fi
 fi
 
-# --- Quota recorder: reinstall systemd units if missing ---
-# Same pattern as above; the units + installer live in
-# ~/tools/quota-recorder (code#6148). 5-minute Muse subscription
-# quota snapshots, file-first with Supabase landing. Until this block
-# existed, every recycle silently dropped the recorder — its absence
-# produced no init failure signal at all — until a job noticed and
-# hand-reinstalled the units. No apt/network dependency, so a genuine
-# install failure counts toward FAILURES like the other families.
-QR_DIR=/home/hatch/tools/quota-recorder
-if [ -x "$QR_DIR/install.sh" ]; then
-  if ! systemctl is-active --quiet quota-recorder.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring quota-recorder timer" >> "$LOG"
-    timeout 120 "$QR_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
-  fi
-fi
 
 # --- Quota recorder: spool freshness (code#8022) ---
 # The block above proves the timer exists; this proves ticks are
