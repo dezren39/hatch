@@ -1,0 +1,1 @@
+autocommit round-trip probe — ENV-HARDEN lane, 2026-11-24. Safe to delete.
