@@ -198,7 +198,7 @@ run_step "bash-wrapper" 120 bash /home/hatch/tools/install-bash-wrapper.sh
 # above (no daemon to serve them while mcpx autostart is off). Do not re-enable.
 # run_step "mcpx-servers" 900 bash /home/hatch/tools/install-mcpx-servers.sh
 run_step "go-check" 60 bash -c '[ -x /home/hatch/tools/go/bin/go ] && /home/hatch/tools/go/bin/go version'
-run_step "rust-check" 60 bash -c 'export CARGO_HOME=/home/hatch/tools/cargo RUSTUP_HOME=/home/hatch/tools/rustup; [ -x /home/hatch/tools/cargo/bin/cargo ] && /home/hatch/tools/cargo/bin/cargo --version'
+run_step "rust-check" 60 bash -c 'export RUSTUP_HOME=/home/hatch/.rustup CARGO_HOME=/home/hatch/.cargo; C=$(ls /home/hatch/.rustup/toolchains/*/bin/cargo 2>/dev/null | sort | tail -n 1); [ -n "$C" ] && [ -x "$C" ] && "$C" --version'
 # (future restore steps go here as run_step lines)
 run_step "services-verify" 900 bash /home/hatch/tools/verify-services.sh
 
@@ -405,6 +405,23 @@ if [ -x "$SH_DIR/install-backup-units.sh" ]; then
   if ! systemctl is-active --quiet sandbox-home-backup.timer 2>/dev/null; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-backup timer" >> "$LOG"
     timeout 120 "$SH_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+  fi
+fi
+
+# --- Sandbox backup watchdog: reinstall systemd units if missing ---
+# Same pattern as above; units + installer live in hatch-personal
+# (scripts/sandbox-backup-watchdog, hatch-personal#69). The watchdog
+# checks every 15 min that both backup timers above are actually
+# active and reinstalls any that are not — a missing timer errors
+# nowhere, so the watchdog is what makes the absence loud between
+# boots. Added to this seat's init 2026-11-24 (seat audit vs the
+# boot-hook README §6, which wires the watchdog installer into init
+# next to the backup restore blocks).
+BW_DIR=/home/hatch/hatch-personal/scripts/sandbox-backup-watchdog
+if [ -x "$BW_DIR/install-watchdog-units.sh" ]; then
+  if ! systemctl is-active --quiet sandbox-backup-watchdog.timer 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-backup-watchdog timer" >> "$LOG"
+    timeout 120 "$BW_DIR/install-watchdog-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
   fi
 fi
 

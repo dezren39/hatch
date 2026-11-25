@@ -163,7 +163,38 @@ populate_persist() {
   fi
 }
 
+ensure_store_ownership() {
+  # The store dir itself must be root:nixbld (0:993), mode 1775 — the
+  # state nix's LocalStore startup fixup maintains on every store open
+  # (strace-verified: chown $store 0 993 + chmod 01775) and the state
+  # recorded for nix/store/ in the estate tarball. When the group
+  # drifts — the 2026-11-22 persist rebuild landed it on nogroup
+  # (65534), the setgid /home/hatch group — the fixup chown stops
+  # being a no-op. The taint shim only elides chowns that are already
+  # no-ops, so the real chown reaches the sandbox, which denies it in
+  # nix's context: every store open aborts with "changing ownership
+  # of /nix/store: Operation not permitted". nix then LOOKS installed
+  # (--version never opens the store) while every real operation —
+  # and this script's health check — fails. A shell chown is not
+  # denied (probe-verified), so repair the precondition here, before
+  # any nix invocation. Best-effort with a loud stderr note; if the
+  # repair itself fails, nix_works below still reports the truth.
+  local store="$PERSIST/store" uid gid mode
+  [ -d "$store" ] || return 0
+  uid=$(stat -c %u "$store" 2>/dev/null) || return 0
+  gid=$(stat -c %g "$store" 2>/dev/null) || return 0
+  mode=$(stat -c %a "$store" 2>/dev/null) || return 0
+  if [ "$uid" != "0" ] || [ "$gid" != "993" ] || [ "$mode" != "1775" ]; then
+    echo "nix-ensure: store dir is $uid:$gid mode $mode; repairing to 0:993 1775" >&2
+    chown 0:993 "$store" 2>/dev/null \
+      || echo "nix-ensure: WARNING: chown $store failed" >&2
+    chmod 1775 "$store" 2>/dev/null \
+      || echo "nix-ensure: WARNING: chmod $store failed" >&2
+  fi
+}
+
 persist_healthy || populate_persist
 ensure_link
+ensure_store_ownership
 ensure_profile_nix
 nix_works

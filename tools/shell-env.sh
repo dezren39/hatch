@@ -85,3 +85,6 @@ if [ -f "$HOME/.config/fleet/op-backend.env" ]; then
   . "$HOME/.config/fleet/op-backend.env" 2>/dev/null
   set +a
 fi
+
+# muse-op-token: load the service account for headless Fleet secrets resolution.
+[ -r "$HOME/tools/op-env.sh" ] && . "$HOME/tools/op-env.sh"
