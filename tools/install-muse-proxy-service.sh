@@ -51,7 +51,7 @@ muse_proxy_healthy() {
   holder=$(ss -ltnp 2>/dev/null | grep '127.0.0.1:18747' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2 || true)
   [ -n "$holder" ] && [ "$holder" = "$main_pid" ]
 }
-deadline=$(( $(date +%s) + 30 ))
+deadline=$(($(date +%s) + 30))
 until muse_proxy_healthy; do
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "install-muse-proxy-service: muse-proxy NOT healthy after 30s:"

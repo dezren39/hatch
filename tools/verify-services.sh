@@ -26,7 +26,7 @@ check_mcpx() {
 check_opencode_serve() {
   systemctl is-active --quiet opencode-serve.service || return 1
   local pw code
-  pw="$(tr -d '\n' < /home/hatch/tools/secrets.d/opencode-server-password 2>/dev/null)"
+  pw="$(tr -d '\n' </home/hatch/tools/secrets.d/opencode-server-password 2>/dev/null)"
   [ -n "$pw" ] || return 1
   # --noproxy: loopback must never go through the egress proxy.
   code="$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' --max-time 5 \
@@ -44,7 +44,7 @@ check_board_agent() {
 }
 
 wait_healthy() { # check-fn timeout-seconds
-  local fn="$1" deadline=$(( $(date +%s) + $2 ))
+  local fn="$1" deadline=$(($(date +%s) + $2))
   until "$fn"; do
     [ "$(date +%s)" -ge "$deadline" ] && return 1
     sleep 2

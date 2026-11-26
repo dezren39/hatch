@@ -28,7 +28,7 @@ claude_code_proxy_healthy() {
   systemctl is-active --quiet claude-code-proxy.service || return 1
   curl --noproxy '*' -s -m 3 http://127.0.0.1:18749/health 2>/dev/null | grep -q '"status": "ok"'
 }
-deadline=$(( $(date +%s) + 30 ))
+deadline=$(($(date +%s) + 30))
 until claude_code_proxy_healthy; do
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "install-claude-code-proxy-service: claude-code-proxy NOT healthy after 30s:"

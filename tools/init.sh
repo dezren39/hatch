@@ -21,7 +21,7 @@ mkdir -p "$LOG_DIR"
 # --- Concurrency backstop: only one init at a time (Phase A, 2026-10-25) ---
 exec 9>"$LOG_DIR/.init.lock"
 if ! flock -n 9; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: another init already running, exiting" >> "$LOG"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: another init already running, exiting" >>"$LOG"
   exit 0
 fi
 
@@ -81,16 +81,16 @@ check_personal_links() {
     target="$PERSONAL_REPO/$rel"
     if [ -L "$link" ]; then
       if [ "$(readlink "$link")" != "$target" ]; then
-        echo "[$START_DT] init: personal-link '$rel' pointed at $(readlink "$link") — re-pointing" >> "$LOG"
+        echo "[$START_DT] init: personal-link '$rel' pointed at $(readlink "$link") — re-pointing" >>"$LOG"
         ln -sfn "$target" "$link"
       fi
       if [ ! -e "$target" ]; then
-        echo "[$START_DT] init: personal-link '$rel' DANGLING — target $target missing from repo" >> "$LOG"
+        echo "[$START_DT] init: personal-link '$rel' DANGLING — target $target missing from repo" >>"$LOG"
       fi
       continue
     fi
     if [ ! -e "$target" ]; then
-      echo "[$START_DT] init: personal-link '$rel' BROKEN — repo target $target missing, cannot repair" >> "$LOG"
+      echo "[$START_DT] init: personal-link '$rel' BROKEN — repo target $target missing, cannot repair" >>"$LOG"
       continue
     fi
     if [ -e "$link" ]; then
@@ -99,12 +99,12 @@ check_personal_links() {
       mkdir -p "$PERSONAL_REPO/.desync-backup"
       if [ -f "$link" ] && [ -f "$target" ] && [ "$link" -nt "$target" ]; then
         cp -p "$link" "$target"
-        echo "[$START_DT] init: personal-link '$rel' was a real file NEWER than the repo copy — synced into repo first" >> "$LOG"
+        echo "[$START_DT] init: personal-link '$rel' was a real file NEWER than the repo copy — synced into repo first" >>"$LOG"
       fi
       mv "$link" "$PERSONAL_REPO/.desync-backup/$(printf '%s' "$rel" | tr '/' '_').$stamp"
-      echo "[$START_DT] init: personal-link '$rel' was a real file/dir — moved aside to .desync-backup, re-linking" >> "$LOG"
+      echo "[$START_DT] init: personal-link '$rel' was a real file/dir — moved aside to .desync-backup, re-linking" >>"$LOG"
     else
-      echo "[$START_DT] init: personal-link '$rel' missing — re-creating" >> "$LOG"
+      echo "[$START_DT] init: personal-link '$rel' missing — re-creating" >>"$LOG"
     fi
     ln -s "$target" "$link"
   done
@@ -116,10 +116,10 @@ check_personal_links
 # which is quiet when every link is correct and never clobbers a real
 # path. Runs before the warm-boot exit, like the guard above; failures
 # are logged, never fatal to init.
-/home/hatch/tools/restore-workspace-links.sh >> "$LOG" 2>&1 || echo "[$START_DT] init: restore-workspace-links reported a problem (see above)" >> "$LOG"
+/home/hatch/tools/restore-workspace-links.sh >>"$LOG" 2>&1 || echo "[$START_DT] init: restore-workspace-links reported a problem (see above)" >>"$LOG"
 
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$BOOT_ID" ] && nix_works; then
-  echo "[$START_DT] init: already initialized for boot $BOOT_ID, nothing to do" >> "$LOG"
+  echo "[$START_DT] init: already initialized for boot $BOOT_ID, nothing to do" >>"$LOG"
   exit 0
 fi
 
@@ -129,7 +129,7 @@ fi
   echo "[$START_DT] init: prev_boot_id=$PREV_BOOT_ID prev_end='$PREV_END'"
   echo "[$START_DT] init: sys kernel=$KERNEL os='$OS_VER' cpus=$CPU_COUNT mem=$MEM_TOTAL"
   echo "[$START_DT] init: sys disk_home='$DISK_HOME' nix_persist=unmeasured net_cache_nixos_org=deferred"
-} >> "$LOG"
+} >>"$LOG"
 
 FAILURES=0
 
@@ -143,20 +143,21 @@ FAILURES=0
 # load. A timeout counts as a failure, so result= stays truthful and
 # the boot marker is not written (the next poll retries).
 run_step() {
-  local name="$1" budget="$2"; shift 2
+  local name="$1" budget="$2"
+  shift 2
   local step_start=$(date +%s)
   timeout --signal=TERM --kill-after=15 "$budget" "$@" >>"$LOG" 2>&1
   local code=$?
   local step_dur=$(($(date +%s) - step_start))
   local now=$(date '+%Y-%m-%d %H:%M:%S %Z')
   if [ "$code" -eq 0 ]; then
-    echo "[$now] init: step '$name' OK (${step_dur}s)" >> "$LOG"
+    echo "[$now] init: step '$name' OK (${step_dur}s)" >>"$LOG"
   elif [ "$code" -eq 124 ]; then
-    echo "[$now] init: step '$name' FAILED (timeout after ${budget}s budget, ran ${step_dur}s) — see output above" >> "$LOG"
-    FAILURES=$((FAILURES+1))
+    echo "[$now] init: step '$name' FAILED (timeout after ${budget}s budget, ran ${step_dur}s) — see output above" >>"$LOG"
+    FAILURES=$((FAILURES + 1))
   else
-    echo "[$now] init: step '$name' FAILED (exit $code, ${step_dur}s) — see output above" >> "$LOG"
-    FAILURES=$((FAILURES+1))
+    echo "[$now] init: step '$name' FAILED (exit $code, ${step_dur}s) — see output above" >>"$LOG"
+    FAILURES=$((FAILURES + 1))
   fi
 }
 
@@ -222,7 +223,7 @@ if timeout 10 curl -sI https://cache.nixos.org/ 2>/dev/null | head -1 | grep -q 
   NET_LAT=$(
     LAT_TMP=$(mktemp -d)
     for i in 1 2 3; do
-      ( curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0" ) > "$LAT_TMP/$i" &
+      (curl -s -o /dev/null -w "%{time_total}\n" --max-time 10 https://cache.nixos.org/ 2>/dev/null || echo "0") >"$LAT_TMP/$i" &
     done
     wait
     cat "$LAT_TMP/1" "$LAT_TMP/2" "$LAT_TMP/3" 2>/dev/null | awk '$1>0{sum+=$1;n++} END{if(n>0)printf "%.3f", sum/n; else print "null"}'
@@ -248,8 +249,8 @@ INIT_SECS=$((END_EPOCH - START_EPOCH))
 ATM_DIR=/home/hatch/hatch-personal/scripts/airthings-monitor
 if [ -x "$ATM_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet airthings-monitor.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring airthings-monitor timer" >> "$LOG"
-    timeout 120 "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring airthings-monitor timer" >>"$LOG"
+    timeout 120 "$ATM_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -258,8 +259,8 @@ fi
 FU_DIR=/home/hatch/hatch-personal/scripts/fleet-units
 if [ -x "$FU_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet init-ensure.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet units" >> "$LOG"
-    timeout 120 "$FU_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring fleet units" >>"$LOG"
+    timeout 120 "$FU_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -273,11 +274,11 @@ fi
 # the installer once.
 CF_DIR=/home/hatch/hatch-personal/scripts/charge-inputs-fetcher
 if [ -f /home/hatch/.config/charge-inputs-fetcher.disabled ]; then
-  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: charge-inputs-fetcher disabled by marker; skipping" >> "$LOG"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: charge-inputs-fetcher disabled by marker; skipping" >>"$LOG"
 elif [ -x "$CF_DIR/install.sh" ]; then
   if ! systemctl is-active --quiet charge-inputs-fetcher.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring charge-inputs-fetcher timer" >> "$LOG"
-    timeout 120 "$CF_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring charge-inputs-fetcher timer" >>"$LOG"
+    timeout 120 "$CF_DIR/install.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -297,8 +298,8 @@ fi
 RS_DIR=/home/hatch/hatch-personal/scripts/resource-sampler
 if [ -x "$RS_DIR/install-sampler-units.sh" ]; then
   if ! systemctl is-active --quiet resource-sampler.service 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring resource sampler" >> "$LOG"
-    timeout 120 "$RS_DIR/install-sampler-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring resource sampler" >>"$LOG"
+    timeout 120 "$RS_DIR/install-sampler-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -313,7 +314,7 @@ fi
 SS_DIR=/home/hatch/hatch-personal/scripts/sysstat
 if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
   if ! systemctl is-active --quiet sysstat-collector.service 2>/dev/null || ! systemctl is-active --quiet pidstat-collector.service 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sysstat collector" >> "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sysstat collector" >>"$LOG"
     # Apt-lock contention is NOT an init failure (2026-11-04): the sandbox
     # platform's post-boot os-intent replay holds /var/lib/apt/lists/lock
     # for many minutes after every recycle, so this installer's apt-get
@@ -338,16 +339,16 @@ if [ -x "$SS_DIR/install-sysstat-units.sh" ]; then
     SS_TMP=$(mktemp)
     timeout 600 "$SS_DIR/install-sysstat-units.sh" >>"$SS_TMP" 2>&1
     SS_EXIT=$?
-    cat "$SS_TMP" >> "$LOG"
+    cat "$SS_TMP" >>"$LOG"
     if [ "$SS_EXIT" -ne 0 ]; then
       if grep -q "Could not get lock\|Unable to lock directory" "$SS_TMP"; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt lock held by another process — not counted as a failure; detached retry queued)" >> "$LOG"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt lock held by another process — not counted as a failure; detached retry queued)" >>"$LOG"
         setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service && systemctl is-active --quiet pidstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
       elif [ "$SS_EXIT" -eq 124 ] || grep -q "Failed to fetch\|Some index files failed to download" "$SS_TMP"; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt fetch stalled or failed — mirror/network weather, exit $SS_EXIT; not counted as a failure; detached retry queued)" >> "$LOG"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: sysstat restore DEFERRED (apt fetch stalled or failed — mirror/network weather, exit $SS_EXIT; not counted as a failure; detached retry queued)" >>"$LOG"
         setsid nohup bash -c 'for i in 1 2 3 4 5 6; do sleep 300; if systemctl is-active --quiet sysstat-collector.service && systemctl is-active --quiet pidstat-collector.service; then exit 0; fi; /home/hatch/hatch-personal/scripts/sysstat/install-sysstat-units.sh >> /home/hatch/logs/init.log 2>&1 && exit 0; done' </dev/null >/dev/null 2>&1 &
       else
-        FAILURES=$((FAILURES+1))
+        FAILURES=$((FAILURES + 1))
       fi
     fi
     rm -f "$SS_TMP"
@@ -364,8 +365,8 @@ fi
 TS_DIR=/home/hatch/hatch-personal/scripts/tree-size
 if [ -x "$TS_DIR/install-tree-size-units.sh" ]; then
   if ! systemctl is-active --quiet tree-size-writer.service 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring tree-size cache writer" >> "$LOG"
-    timeout 120 "$TS_DIR/install-tree-size-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring tree-size cache writer" >>"$LOG"
+    timeout 120 "$TS_DIR/install-tree-size-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -377,8 +378,8 @@ fi
 AC_DIR=/home/hatch/hatch-personal/scripts/hatch-autocommit
 if [ -x "$AC_DIR/install-autocommit-units.sh" ]; then
   if ! systemctl is-active --quiet hatch-autocommit.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring hatch-autocommit timer" >> "$LOG"
-    timeout 120 "$AC_DIR/install-autocommit-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring hatch-autocommit timer" >>"$LOG"
+    timeout 120 "$AC_DIR/install-autocommit-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -390,8 +391,8 @@ fi
 SB_DIR=/home/hatch/hatch-personal/scripts/sandbox-state-backup
 if [ -x "$SB_DIR/install-backup-units.sh" ]; then
   if ! systemctl is-active --quiet sandbox-state-backup.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-state-backup timer" >> "$LOG"
-    timeout 120 "$SB_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-state-backup timer" >>"$LOG"
+    timeout 120 "$SB_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -403,8 +404,8 @@ fi
 SH_DIR=/home/hatch/hatch-personal/scripts/sandbox-home-backup
 if [ -x "$SH_DIR/install-backup-units.sh" ]; then
   if ! systemctl is-active --quiet sandbox-home-backup.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-backup timer" >> "$LOG"
-    timeout 120 "$SH_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-backup timer" >>"$LOG"
+    timeout 120 "$SH_DIR/install-backup-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -420,8 +421,8 @@ fi
 BW_DIR=/home/hatch/hatch-personal/scripts/sandbox-backup-watchdog
 if [ -x "$BW_DIR/install-watchdog-units.sh" ]; then
   if ! systemctl is-active --quiet sandbox-backup-watchdog.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-backup-watchdog timer" >> "$LOG"
-    timeout 120 "$BW_DIR/install-watchdog-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-backup-watchdog timer" >>"$LOG"
+    timeout 120 "$BW_DIR/install-watchdog-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
 
@@ -434,11 +435,10 @@ fi
 SM_DIR=/home/hatch/hatch-personal/scripts/sandbox-home-mirror
 if [ -x "$SM_DIR/install-mirror-units.sh" ]; then
   if ! systemctl is-active --quiet sandbox-home-mirror.timer 2>/dev/null; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-mirror timer" >> "$LOG"
-    timeout 120 "$SM_DIR/install-mirror-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES+1))
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: restoring sandbox-home-mirror timer" >>"$LOG"
+    timeout 120 "$SM_DIR/install-mirror-units.sh" >>"$LOG" 2>&1 || FAILURES=$((FAILURES + 1))
   fi
 fi
-
 
 # --- Quota recorder: spool freshness (code#8022) ---
 # The block above proves the timer exists; this proves ticks are
@@ -461,11 +461,11 @@ if systemctl is-active --quiet quota-recorder.timer 2>/dev/null; then
     "ok "*)
       ;;
     STALE:*)
-      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool stale — $QR_SPOOL" >> "$LOG"
-      FAILURES=$((FAILURES+1))
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool stale — $QR_SPOOL" >>"$LOG"
+      FAILURES=$((FAILURES + 1))
       ;;
     *)
-      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool freshness check errored — $QR_SPOOL" >> "$LOG"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: quota-recorder spool freshness check errored — $QR_SPOOL" >>"$LOG"
       ;;
   esac
 fi
@@ -488,8 +488,8 @@ if [ "$FAILURES" -eq 0 ]; then RESULT="SUCCESS"; else RESULT="FAILURES=$FAILURES
   echo "net_cache=$NET_OK"
   echo "quota=$QUOTA"
   echo "quota_spool=$QR_SPOOL"
-} > "$STATUS"
-echo "[$END_DT] init: END result=$RESULT init_secs=$INIT_SECS nix=$NIX_VERSION store_paths=$STORE_PATHS profile_bins=$PROFILE_PKGS nix_persist=$NIX_SIZE net_cache=$NET_OK net_lat_s=$NET_LAT quota=[$QUOTA]" >> "$LOG"
+} >"$STATUS"
+echo "[$END_DT] init: END result=$RESULT init_secs=$INIT_SECS nix=$NIX_VERSION store_paths=$STORE_PATHS profile_bins=$PROFILE_PKGS nix_persist=$NIX_SIZE net_cache=$NET_OK net_lat_s=$NET_LAT quota=[$QUOTA]" >>"$LOG"
 
 # --- Compact JSON telemetry (one line per boot, machine-parseable) ---
 JSONL=$LOG_DIR/init.jsonl
@@ -502,7 +502,7 @@ json_esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
     "$(json_esc "$KERNEL")" "$(json_esc "$OS_VER")" "$(json_esc "$CPU_COUNT")" "$(json_esc "$MEM_TOTAL")" "$(json_esc "$DISK_HOME")" "$(json_esc "$NIX_SIZE")"
   printf '"net_ok":"%s","net_lat_s":%s,"nix_version":"%s","store_paths":%s,"profile_bins":%s}\n' \
     "$(json_esc "$NET_OK")" "$NET_LAT" "$(json_esc "$NIX_VERSION")" "$STORE_PATHS" "$PROFILE_PKGS"
-} >> "$JSONL"
+} >>"$JSONL"
 
 # --- Platform-shipped backup sync: detached launch, once per boot ---
 # Platform deployments replace the /opt trees wholesale at recycle
@@ -522,18 +522,18 @@ SYNC_LOG=$LOG_DIR/platform-shipped-sync.log
 SYNC_SCRIPT=/home/hatch/hatch-personal/scripts/sync-platform-shipped.sh
 if [ -x "$SYNC_SCRIPT" ]; then
   if [ -f "$SYNC_MARKER" ] && [ "$(cat "$SYNC_MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: platform-shipped sync already launched for boot $BOOT_ID, skipping" >> "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: platform-shipped sync already launched for boot $BOOT_ID, skipping" >>"$LOG"
   else
-    echo "$BOOT_ID" > "$SYNC_MARKER"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: launching platform-shipped sync detached (log: $SYNC_LOG)" >> "$LOG"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] platform-sync: launched by init for boot $BOOT_ID" >> "$SYNC_LOG"
+    echo "$BOOT_ID" >"$SYNC_MARKER"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init: launching platform-shipped sync detached (log: $SYNC_LOG)" >>"$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] platform-sync: launched by init for boot $BOOT_ID" >>"$SYNC_LOG"
     # 9>&- : the detached child must not inherit (and hold) init's flock fd.
     setsid nohup bash "$SYNC_SCRIPT" >>"$SYNC_LOG" 2>&1 </dev/null 9>&- &
   fi
 fi
 
 if [ "$FAILURES" -eq 0 ]; then
-  echo "$BOOT_ID" > "$MARKER"   # only mark clean boots; failures retry next poll
+  echo "$BOOT_ID" >"$MARKER" # only mark clean boots; failures retry next poll
   exit 0
 else
   exit 1

@@ -38,14 +38,23 @@ XCLIP=/nix/store/s5dlvs8ripp19rc31n55hrrcg7ngfb8c-xclip-0.13/bin/xclip
 source ~/tools/bws-env.sh 2>/dev/null
 
 ID=$(bws secret list -o json | python3 -c "import json,sys; [print(s['id']) for s in json.load(sys.stdin) if s.get('key')=='rustdesk.amd-6-password']")
-[ -n "$ID" ] || { echo "auth: secret id not found" >&2; exit 1; }
+[ -n "$ID" ] || {
+  echo "auth: secret id not found" >&2
+  exit 1
+}
 PW=$(bws secret get "$ID" -o json | python3 -c "import json,sys; print(json.load(sys.stdin)['value'], end='')")
-[ -n "$PW" ] || { echo "auth: empty secret" >&2; exit 1; }
+[ -n "$PW" ] || {
+  echo "auth: empty secret" >&2
+  exit 1
+}
 echo "auth: secret fetched (${#PW} chars), pasting..." >&2
 
 XD="$HOME/tools/dispatcher.sh"
 WIN=$($XD xdotool search --name 'Remote Desktop - RustDesk' 2>/dev/null | head -1)
-[ -n "${WIN:-}" ] || { echo "auth: remote window not found" >&2; exit 1; }
+[ -n "${WIN:-}" ] || {
+  echo "auth: remote window not found" >&2
+  exit 1
+}
 $XD xdotool windowfocus --sync "$WIN"
 # NO mouse click (corrected 2026-11-04): on a fresh dialog the password
 # field is ALREADY focused (blue border + live cursor). Clicking is what

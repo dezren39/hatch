@@ -21,11 +21,11 @@ chmod 700 "$SECRETS_DIR"
 # (filed 2026-10-24, v1->v2 migration).
 SERVER_PW_FILE="$SECRETS_DIR/opencode-server-password"
 if [ ! -s "$SERVER_PW_FILE" ]; then
-  head -c 400 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 32 > "$SERVER_PW_FILE"
-  echo >> "$SERVER_PW_FILE"
+  head -c 400 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 32 >"$SERVER_PW_FILE"
+  echo >>"$SERVER_PW_FILE"
 fi
 chmod 600 "$SERVER_PW_FILE"
-SERVER_PW="$(tr -d '\n' < "$SERVER_PW_FILE")"
+SERVER_PW="$(tr -d '\n' <"$SERVER_PW_FILE")"
 CF_TOKEN=""
 if [ -f /home/hatch/tools/bws-env.sh ] && [ -n "${HTTPS_PROXY:-}" ]; then
   # shellcheck disable=SC1091
@@ -77,7 +77,7 @@ if [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
       'OPENCODE_EXPERIMENTAL_EXA=1' \
       'OPENCODE_EXPERIMENTAL_EVENT_SYSTEM=1' \
       'OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER=1'
-  } > "$TMP_ENV"
+  } >"$TMP_ENV"
   chmod 600 "$TMP_ENV"
   mv "$TMP_ENV" "$ENV_FILE"
 else
@@ -104,14 +104,14 @@ fi
 opencode_healthy() {
   systemctl is-active --quiet opencode-serve.service || return 1
   local pw code
-  pw="$(tr -d '\n' < "$SERVER_PW_FILE" 2>/dev/null)"
+  pw="$(tr -d '\n' <"$SERVER_PW_FILE" 2>/dev/null)"
   [ -n "$pw" ] || return 1
   # --noproxy: loopback must never go through the egress proxy.
   code="$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' --max-time 5 \
     -u "opencode:$pw" http://127.0.0.1:4096/openapi.json 2>/dev/null)"
   [ "$code" = "200" ]
 }
-deadline=$(( $(date +%s) + 30 ))
+deadline=$(($(date +%s) + 30))
 until opencode_healthy; do
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "install-opencode-service: opencode-serve NOT healthy after 30s:"

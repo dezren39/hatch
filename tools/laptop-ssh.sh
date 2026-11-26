@@ -95,7 +95,7 @@ cmd="$*"
 # reaped at the deadline even if the signal path fails. Detection is
 # best-effort and silent: any miss just keeps the old signal-only path.
 if [ -r "/proc/$PPID/cmdline" ]; then
-  _pcomm=$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null)
+  _pcomm=$(tr '\0' ' ' <"/proc/$PPID/cmdline" 2>/dev/null)
   case "$_pcomm" in
     *timeout*)
       _t=$(printf '%s' "$_pcomm" | grep -oE 'timeout[^ ]* +(-t +)?[0-9]+(\.[0-9]+)?[smhd]?' | grep -oE '[0-9]+(\.[0-9]+)?[smhd]?$' | head -1)
@@ -119,13 +119,13 @@ fi
 # script from stdin. Convert: the script text becomes the shell string
 # (JSON transport, so none of the old ssh heredoc mangling applies).
 case "$cmd" in
-  'bash -s'|'bash -s '*|'sh -s'|'sh -s '*|'bash -'|'sh -')
+  'bash -s' | 'bash -s '* | 'sh -s' | 'sh -s '* | 'bash -' | 'sh -')
     if [ ! -t 0 ]; then
       script=$(cat)
       exec python3 "$AGENT" exec --shell --timeout "$TIMEOUT" -- "$script"
     fi
     ;;
-  'python3 -'|'python3 - '*|'python -'|'python - '*)
+  'python3 -' | 'python3 - '* | 'python -' | 'python - '*)
     if [ ! -t 0 ]; then
       script=$(cat)
       delim="LAPTOP_AGENT_STDIN_$$"
@@ -145,7 +145,7 @@ if [ ! -t 0 ]; then
   if [ -p /dev/stdin ]; then
     peek=$(mktemp)
     if timeout 0.2 dd if=/dev/stdin of="$peek" bs=1 count=1 2>/dev/null \
-       && [ -s "$peek" ]; then
+      && [ -s "$peek" ]; then
       cat "$peek" - | fallback_ssh "$@"
       rc=${PIPESTATUS[1]}
       rm -f "$peek"

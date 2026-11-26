@@ -62,16 +62,20 @@ fi
 fail=0
 tgt=$(readlink /nix 2>/dev/null || true)
 if [ "$tgt" != "$EXPECTED_NIX_TARGET" ]; then
-  log "VERIFY FAIL: /nix -> '$tgt' (expected $EXPECTED_NIX_TARGET)"; fail=1
+  log "VERIFY FAIL: /nix -> '$tgt' (expected $EXPECTED_NIX_TARGET)"
+  fail=1
 fi
 if ! LD_PRELOAD="$SHIM" "$PROFILE_NIX" --version >/dev/null 2>&1; then
-  log "VERIFY FAIL: profile nix does not run"; fail=1
+  log "VERIFY FAIL: profile nix does not run"
+  fail=1
 fi
 if [ ! -x /usr/local/bin/nix ]; then
-  log "VERIFY FAIL: /usr/local/bin/nix missing"; fail=1
+  log "VERIFY FAIL: /usr/local/bin/nix missing"
+  fail=1
 fi
 if ! grep -q 'BASH_ENV=/home/hatch/tools/shell-env.sh' /bin/bash 2>/dev/null; then
-  log "VERIFY FAIL: /bin/bash wrapper missing or stale"; fail=1
+  log "VERIFY FAIL: /bin/bash wrapper missing or stale"
+  fail=1
 fi
 
 if [ $fail -ne 0 ]; then

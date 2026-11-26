@@ -1,0 +1,62 @@
+name: auto-format
+
+# Format auto-fix for this repo, adapted from the
+# developing-today/code PoC (code#2015) per hatch#15, following the
+# hatch-personal#52 adaptation — adapted, not copied:
+#   - Scope is only the hand-written shell surface (tools/,
+#     scripts/, .claude/hooks/, .github/scripts/, plus the two
+#     extensionless bash scripts in tools/): archive/ holds dated
+#     snapshots, tools/nix-installer.sh is vendored upstream,
+#     tools/bws-backup-secrets.sh is unparseable by shfmt (dotted
+#     associative-array keys), and the rest of the tree is media,
+#     notes and state that must never be reformatted.
+#   - No nix/treefmt config and no automation PAT in this repo: the
+#     pass is shfmt from nixpkgs on the runner, pushes use the
+#     built-in GITHUB_TOKEN, and there is no success-SHA variable
+#     (that token cannot write repository variables). shfmt is
+#     idempotent, so a pass over its own output changes nothing and
+#     cannot loop; the variable in the PoC is an optimisation, not a
+#     correctness input.
+# PoC invariants kept: formatting never gates a merge (this workflow
+# is not a PR check), a pass is never cancelled mid-commit
+# (cancel-in-progress: false), and bot commits go directly to the
+# default branch with a clear style message.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One format pass at a time on main; a pass is never cancelled
+# mid-commit.
+concurrency:
+  group: auto-format-main
+  cancel-in-progress: false
+
+jobs:
+  shfmt:
+    name: shfmt auto-format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Format shell sources with shfmt and commit any fixes
+        run: |
+          set -euo pipefail
+          nix shell nixpkgs#shfmt --command bash .github/scripts/auto-format.sh
+          if git diff --quiet -- tools scripts .claude/hooks .github/scripts; then
+            echo "Shell sources already formatted; nothing to commit."
+            exit 0
+          fi
+          git status --porcelain -- tools scripts .claude/hooks .github/scripts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- tools scripts .claude/hooks .github/scripts
+          git commit -m "style(shfmt): auto-format on main"
+          git push origin HEAD:main

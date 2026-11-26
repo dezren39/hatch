@@ -8,7 +8,10 @@
 # Safe to re-run any time; keeps one backup of the previous snapshot.
 set -u
 TARBALL=/home/hatch/tools/nix-store.tar.gz
-[ -d /nix/store ] || { echo "no live /nix/store; nothing to snapshot"; exit 1; }
+[ -d /nix/store ] || {
+  echo "no live /nix/store; nothing to snapshot"
+  exit 1
+}
 echo "live /nix: $(du -sh /nix | cut -f1)"
 if [ -f "$TARBALL" ]; then
   cp -f "$TARBALL" "$TARBALL.prev"
