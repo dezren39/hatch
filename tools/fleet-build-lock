@@ -39,11 +39,11 @@ acquired=""
 while [ -z "$acquired" ]; do
   i=1
   while [ "$i" -le "$slots" ]; do
-	fd=$((200 + i))
+    fd=$((200 + i))
     eval "exec $fd>\"$lockdir/slot-$i.lock\""
     if flock -n "$fd"; then
-		acquired=$i
-		break
+      acquired=$i
+      break
     fi
     eval "exec $fd>&-"
     i=$((i + 1))
