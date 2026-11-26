@@ -50,7 +50,7 @@ fi
 
 # Local-only informational verbs: no token, no rotation.
 case "${1:-}" in
-  --version|--help|-h|help|"")
+  --version | --help | -h | help | "")
     exec "$REAL_GH" "$@"
     ;;
 esac
@@ -73,7 +73,7 @@ fi
 GH_ROUTE_FILE=/home/hatch/.local/state/fleet/gh-route
 if [ -f "$GH_ROUTE_FILE" ]; then
   GH_ROUTE=""
-  IFS= read -r GH_ROUTE < "$GH_ROUTE_FILE" || true
+  IFS= read -r GH_ROUTE <"$GH_ROUTE_FILE" || true
   if [ "$GH_ROUTE" = "direct" ]; then
     echo "gh-shim: fleet gh route is down (routes-ensure marker); using the in-process gh" >&2
     exec "$REAL_GH" "$@"

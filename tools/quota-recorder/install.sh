@@ -13,9 +13,9 @@ cp "$DIR/quota-recorder.service" /etc/systemd/system/quota-recorder.service
 cp "$DIR/quota-recorder.timer" /etc/systemd/system/quota-recorder.timer
 systemctl daemon-reload
 systemctl enable --now quota-recorder.timer
-systemctl is-active --quiet quota-recorder.timer &&
-  echo "quota-recorder.timer active" ||
-  {
+systemctl is-active --quiet quota-recorder.timer \
+  && echo "quota-recorder.timer active" \
+  || {
     echo "FAILED to activate quota-recorder.timer"
     exit 1
   }

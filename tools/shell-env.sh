@@ -50,8 +50,8 @@ command_not_found_handle() {
 # re-trigger. Failures are non-fatal to the shell.
 if [ -z "${NIX_REPAIR_GUARD:-}" ]; then
   if [ ! -L /nix ] \
-     || [ ! -x /nix/var/nix/profiles/per-user/root/profile/bin/nix ] \
-     || [ ! -x /usr/local/bin/nix ]; then
+    || [ ! -x /nix/var/nix/profiles/per-user/root/profile/bin/nix ] \
+    || [ ! -x /usr/local/bin/nix ]; then
     NIX_REPAIR_GUARD=1 /bin/bash.real /home/hatch/tools/nix-repair.sh || true
   fi
 fi

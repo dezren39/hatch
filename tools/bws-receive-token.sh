@@ -24,7 +24,7 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-printf '%s' "$TOKEN" > "$TOKEN_FILE"
+printf '%s' "$TOKEN" >"$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE"
 unset TOKEN
 

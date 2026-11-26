@@ -16,7 +16,7 @@ STRIPPED=$(echo "$STRIPPED" | sed -E 's/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:
 FIRST=$(echo "$STRIPPED" | awk '{print $1}')
 
 case "$FIRST" in
-  grep|rg|egrep|fgrep|cat|head|tail|sed|awk|find) ;;
+  grep | rg | egrep | fgrep | cat | head | tail | sed | awk | find) ;;
   *) exit 0 ;;
 esac
 
@@ -29,10 +29,11 @@ for pt in "$HOME"/.codedb/projects/*/project.txt; do
   [ -f "$pt" ] || continue
   root=$(head -1 "$pt" 2>/dev/null)
   [ -z "$root" ] && continue
-  [ "$root" = "/" ] && continue        # degenerate root matches everything
-  [ "$root" = "$HOME" ] && continue    # home indexed as a project would block all of ~
+  [ "$root" = "/" ] && continue     # degenerate root matches everything
+  [ "$root" = "$HOME" ] && continue # home indexed as a project would block all of ~
   if [ "$PWD_ABS" = "$root" ] || [ "${PWD_ABS#"$root"/}" != "$PWD_ABS" ]; then
-    REPO_ROOT="$root"; break
+    REPO_ROOT="$root"
+    break
   fi
 done
 [ -z "$REPO_ROOT" ] && exit 0
@@ -44,17 +45,35 @@ set -f
 for tok in $STRIPPED; do
   case "$tok" in
     /*)
-      if [ "$tok" = "$REPO_ROOT" ] || [ "${tok#"$REPO_ROOT"/}" != "$tok" ]; then :; else set +f; exit 0; fi
+      if [ "$tok" = "$REPO_ROOT" ] || [ "${tok#"$REPO_ROOT"/}" != "$tok" ]; then :; else
+        set +f
+        exit 0
+      fi
       ;;
   esac
 done
 set +f
 
 case "$FIRST" in
-  grep|rg|egrep|fgrep) echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_search \"<text>\" (codedb_word for an exact identifier, codedb_callers for call sites) instead of $FIRST — ranked + fewer tokens. Native $FIRST is allowed outside this repo or with CODEDB_NO_HOOKS=1." >&2; exit 2 ;;
-  cat) echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_read path=<file> (codedb_outline first for a map) instead of cat. CODEDB_NO_HOOKS=1 to disable." >&2; exit 2 ;;
-  head|tail) echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_read path=<file> line_start=.. line_end=.. instead of $FIRST. CODEDB_NO_HOOKS=1 to disable." >&2; exit 2 ;;
-  sed|awk) echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_edit (op=str_replace) instead of $FIRST for edits. CODEDB_NO_HOOKS=1 to disable." >&2; exit 2 ;;
-  find) echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_find (fuzzy names) or codedb_glob (patterns) instead of find. CODEDB_NO_HOOKS=1 to disable." >&2; exit 2 ;;
+  grep | rg | egrep | fgrep)
+    echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_search \"<text>\" (codedb_word for an exact identifier, codedb_callers for call sites) instead of $FIRST — ranked + fewer tokens. Native $FIRST is allowed outside this repo or with CODEDB_NO_HOOKS=1." >&2
+    exit 2
+    ;;
+  cat)
+    echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_read path=<file> (codedb_outline first for a map) instead of cat. CODEDB_NO_HOOKS=1 to disable." >&2
+    exit 2
+    ;;
+  head | tail)
+    echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_read path=<file> line_start=.. line_end=.. instead of $FIRST. CODEDB_NO_HOOKS=1 to disable." >&2
+    exit 2
+    ;;
+  sed | awk)
+    echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_edit (op=str_replace) instead of $FIRST for edits. CODEDB_NO_HOOKS=1 to disable." >&2
+    exit 2
+    ;;
+  find)
+    echo "BLOCKED in indexed repo ($REPO_ROOT): use codedb_find (fuzzy names) or codedb_glob (patterns) instead of find. CODEDB_NO_HOOKS=1 to disable." >&2
+    exit 2
+    ;;
 esac
 exit 0

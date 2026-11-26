@@ -40,7 +40,10 @@ idle_watch() {
     if [ -z "$pids" ]; then
       # client not up (yet) or already gone; give up after a short grace
       misses=$((misses + 1))
-      [ "$misses" -ge 3 ] && { echo "idle-watch: no client process; exiting"; exit 0; }
+      [ "$misses" -ge 3 ] && {
+        echo "idle-watch: no client process; exiting"
+        exit 0
+      }
     else
       misses=0
       if session_active; then
@@ -50,7 +53,7 @@ idle_watch() {
       fi
       if [ "$idle_sec" -ge $((RUSTDESK_IDLE_EXIT_MINUTES * 60)) ]; then
         if session_active; then
-          idle_sec=0   # a session appeared at the last moment; never kill it
+          idle_sec=0 # a session appeared at the last moment; never kill it
         else
           echo "idle-watch: no session for ${RUSTDESK_IDLE_EXIT_MINUTES}m; exiting rustdesk client (pids: $(echo $pids | tr '\n' ' '))"
           for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
@@ -63,7 +66,10 @@ idle_watch() {
     sleep "$RUSTDESK_IDLE_POLL_SEC"
   done
 }
-if [ "${1:-}" = "--idle-watch" ]; then idle_watch; exit 0; fi
+if [ "${1:-}" = "--idle-watch" ]; then
+  idle_watch
+  exit 0
+fi
 
 # 1. /run/opengl-driver (NixOS layout the wrapper + libglvnd expect)
 if [ ! -e /run/opengl-driver/lib/libEGL_mesa.so.0 ]; then
@@ -75,7 +81,7 @@ fi
 
 # 2. Xvfb
 if [ ! -e "/tmp/.X11-unix/X${DISP#:}" ]; then
-  nohup Xvfb "$DISP" -screen 0 1600x1000x24 > /tmp/xvfb-rustdesk.log 2>&1 &
+  nohup Xvfb "$DISP" -screen 0 1600x1000x24 >/tmp/xvfb-rustdesk.log 2>&1 &
   sleep 2
   echo "launch: Xvfb $DISP started"
 fi
@@ -90,22 +96,22 @@ fwd_holder() {
   ss -tlnp 2>/dev/null | grep -w '127.0.0.1:21118' | grep -oP 'pid=\K[0-9]+' | head -1
 }
 HOLDER=$(fwd_holder)
-if [ -n "$HOLDER" ] && ! tr '\0' ' ' < "/proc/$HOLDER/cmdline" 2>/dev/null | grep -q 'ControlPath=none'; then
+if [ -n "$HOLDER" ] && ! tr '\0' ' ' <"/proc/$HOLDER/cmdline" 2>/dev/null | grep -q 'ControlPath=none'; then
   ssh -S "$HOME/.ssh/cm-user@100.99.113.103:22" -O cancel \
     -L 21118:127.0.0.1:21118 user@100.99.113.103 2>/dev/null || true
   sleep 1
   HOLDER=$(fwd_holder)
 fi
 if [ -z "$HOLDER" ]; then
-  nohup "$HOME/tools/rustdesk-gl/forward.sh" > /tmp/ssh-fwd-rustdesk.log 2>&1 &
+  nohup "$HOME/tools/rustdesk-gl/forward.sh" >/tmp/ssh-fwd-rustdesk.log 2>&1 &
   sleep 5
   echo "launch: dedicated ssh forward 127.0.0.1:21118 -> laptop started"
 fi
 
 # 4. RustDesk client (software GL)
-if ! pgrep -f 'rustdesk.*\.rustdesk-wrapped|bin/rustdesk' > /dev/null; then
+if ! pgrep -f 'rustdesk.*\.rustdesk-wrapped|bin/rustdesk' >/dev/null; then
   LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
-    nohup "$HOME/tools/bin/rustdesk" > /tmp/rustdesk.log 2>&1 &
+    nohup "$HOME/tools/bin/rustdesk" >/tmp/rustdesk.log 2>&1 &
   sleep 6
   echo "launch: rustdesk client started"
 fi
@@ -115,8 +121,8 @@ WATCH_PID_FILE=/tmp/rustdesk-idle-watch.pid
 if [ -f "$WATCH_PID_FILE" ] && kill -0 "$(cat "$WATCH_PID_FILE")" 2>/dev/null; then
   echo "launch: idle watcher already running (pid $(cat "$WATCH_PID_FILE"))"
 else
-  nohup bash "$0" --idle-watch >> /tmp/rustdesk-idle-watch.log 2>&1 &
-  echo $! > "$WATCH_PID_FILE"
+  nohup bash "$0" --idle-watch >>/tmp/rustdesk-idle-watch.log 2>&1 &
+  echo $! >"$WATCH_PID_FILE"
   echo "launch: idle watcher started (client exits after ${RUSTDESK_IDLE_EXIT_MINUTES}m without a session)"
 fi
 echo "launch: ready (DISPLAY=$DISP)"

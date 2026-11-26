@@ -28,7 +28,7 @@ if [ -s "$TOKEN_FILE" ]; then
     printf 'HTTP_PROXY=http://hatch-egress-proxy:3128\n'
     printf 'http_proxy=http://hatch-egress-proxy:3128\n'
     printf 'SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem\n'
-  } > "$TMP_ENV"
+  } >"$TMP_ENV"
   chmod 600 "$TMP_ENV"
   mv "$TMP_ENV" "$ENV_FILE"
   unset TOKEN

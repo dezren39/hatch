@@ -44,7 +44,7 @@ for line in \
   "allow-dirty = true"; do
   key="${line%% = *}"
   grep -q "^[[:space:]]*${key}[[:space:]]*=" /etc/nix/nix.conf 2>/dev/null \
-    || echo "$line" >> /etc/nix/nix.conf
+    || echo "$line" >>/etc/nix/nix.conf
 done
 
 # /etc/passwd and /etc/group live on the overlay, so the nixbld build users
@@ -58,8 +58,8 @@ ensure_nixbld_users() {
     groupadd -g 993 nixbld
   fi
   for i in $(seq 1 10); do
-    getent passwd "nixbld$i" >/dev/null || \
-      useradd -u $((998 + i)) -g nixbld -M -s /usr/sbin/nologin \
+    getent passwd "nixbld$i" >/dev/null \
+      || useradd -u $((998 + i)) -g nixbld -M -s /usr/sbin/nologin \
         -d /var/empty "nixbld$i"
     # nix refuses "the build users group 'nixbld' has no members" unless the
     # users are listed as supplementary members too (primary group isn't enough)
@@ -156,7 +156,8 @@ populate_persist() {
     tar -xzpf "$TARBALL" -C "$PERSIST" --strip-components=1 2>/dev/null
     tar -xzpf "$TARBALL" -C "$PERSIST" --strip-components=1 2>/dev/null || true
   else
-    rm -rf /nix; mkdir -p /nix
+    rm -rf /nix
+    mkdir -p /nix
     bash /home/hatch/tools/nix-install.sh
     cp -a /nix/. "$PERSIST/" 2>/dev/null || true
     rm -rf /nix

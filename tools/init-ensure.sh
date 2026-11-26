@@ -22,8 +22,8 @@ if [ -f "$STATUS" ]; then
   LAST_REPORTED=""
   [ -f "$REPORTED" ] && LAST_REPORTED=$(cat "$REPORTED" 2>/dev/null || echo "")
   if [ -n "$RESULT" ] && [ "$RESULT" != "SUCCESS" ] && [ -n "$END_DT" ] \
-     && [ "$END_DT" != "$LAST_REPORTED" ]; then
-    printf '%s\n' "$END_DT" > "$REPORTED"
+    && [ "$END_DT" != "$LAST_REPORTED" ]; then
+    printf '%s\n' "$END_DT" >"$REPORTED"
     echo "init: previous init run FAILED ($END_DT): result=$RESULT (see $LOG)"
     exit 2
   fi
@@ -103,7 +103,10 @@ fi
     SB_AGE=$(ps -o etimes= -p "$SB_PID" 2>/dev/null | tr -d ' ')
     if [ "${SB_AGE:-0}" -ge 120 ]; then
       kill "$SB_PID" 2>/dev/null
-      for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$SB_PID" 2>/dev/null || break; sleep 0.5; done
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$SB_PID" 2>/dev/null || break
+        sleep 0.5
+      done
       rm -f "$SB_SOCK"
     fi
   fi
@@ -151,9 +154,9 @@ fi
     ROUTES_NOW=$(date +%s 2>/dev/null || echo 0)
     ROUTES_LAST=0
     [ -f "$ROUTES_STAMP" ] && ROUTES_LAST=$(cat "$ROUTES_STAMP" 2>/dev/null || echo 0)
-    case "$ROUTES_LAST" in *[!0-9]*|"") ROUTES_LAST=0 ;; esac
+    case "$ROUTES_LAST" in *[!0-9]* | "") ROUTES_LAST=0 ;; esac
     if [ $((ROUTES_NOW - ROUTES_LAST)) -ge 60 ]; then
-      echo "$ROUTES_NOW" > "$ROUTES_STAMP"
+      echo "$ROUTES_NOW" >"$ROUTES_STAMP"
       setsid nohup "$ROUTES_SCRIPT" >>/home/hatch/logs/fleet-routes-ensure.log 2>&1 </dev/null &
     fi
   fi
@@ -180,9 +183,9 @@ fi
     PROXY_NOW=$(date +%s 2>/dev/null || echo 0)
     PROXY_LAST=0
     [ -f "$PROXY_STAMP" ] && PROXY_LAST=$(cat "$PROXY_STAMP" 2>/dev/null || echo 0)
-    case "$PROXY_LAST" in *[!0-9]*|"") PROXY_LAST=0 ;; esac
+    case "$PROXY_LAST" in *[!0-9]* | "") PROXY_LAST=0 ;; esac
     if [ $((PROXY_NOW - PROXY_LAST)) -ge 60 ]; then
-      echo "$PROXY_NOW" > "$PROXY_STAMP"
+      echo "$PROXY_NOW" >"$PROXY_STAMP"
       setsid nohup "$PROXY_SCRIPT" >>/home/hatch/logs/fleet-proxy-ensure.log 2>&1 </dev/null &
     fi
   fi
@@ -235,7 +238,7 @@ fi
 # --- Warm check: marker matches this boot AND backstop timer installed ---
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)
 if [ -f "$MARKER" ] && [ "$(cat "$MARKER" 2>/dev/null || echo none)" = "$BOOT_ID" ] \
-   && [ -f "$TIMER_UNIT" ]; then
+  && [ -f "$TIMER_UNIT" ]; then
   exit 0
 fi
 
@@ -252,7 +255,7 @@ if ! flock -n 7; then
     INIT_AGE=$(ps -o etimes= -p "$INIT_PID" 2>/dev/null | tr -d ' ')
     if [ -n "${INIT_AGE:-}" ] && [ "$INIT_AGE" -gt "$STALE_INIT_SECS" ] 2>/dev/null; then
       echo "init: WARNING init.sh (pid $INIT_PID) has held the init lock for ${INIT_AGE}s (> ${STALE_INIT_SECS}s) — it appears stuck; see $LOG"
-      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init-ensure: stale init detected pid=$INIT_PID age=${INIT_AGE}s" >> "$LOG"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S %Z')] init-ensure: stale init detected pid=$INIT_PID age=${INIT_AGE}s" >>"$LOG"
     fi
   fi
 fi
@@ -265,7 +268,7 @@ if [ ! -x "$INIT" ]; then
 fi
 exec 8>"$ENSURE_LOCK"
 if ! flock -n 8; then
-  exit 0   # another ensure already spawned init; nothing more to do
+  exit 0 # another ensure already spawned init; nothing more to do
 fi
-setsid nohup bash "$INIT" >>"$LOG" 2>&1 < /dev/null &
+setsid nohup bash "$INIT" >>"$LOG" 2>&1 </dev/null &
 exit 0

@@ -25,20 +25,23 @@ check() { # name expected actual
 }
 
 # 1. Present but unexecutable: +x file with a nonexistent interpreter.
-printf '#!/nonexistent/interpreter\n' > "$TMP/fleet-dead"
+printf '#!/nonexistent/interpreter\n' >"$TMP/fleet-dead"
 chmod +x "$TMP/fleet-dead"
-[ -x "$TMP/fleet-dead" ] || { echo "FAIL: fixture fleet-dead is not -x"; fail=1; }
+[ -x "$TMP/fleet-dead" ] || {
+  echo "FAIL: fixture fleet-dead is not -x"
+  fail=1
+}
 if "$TMP/fleet-dead" --version >/dev/null 2>&1; then
   echo "FAIL: fixture fleet-dead unexpectedly executes"
   fail=1
 fi
 
 # 2. Executes but exits non-zero on --version.
-printf '#!/bin/sh\nexit 1\n' > "$TMP/fleet-broken"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/fleet-broken"
 chmod +x "$TMP/fleet-broken"
 
 # 3. Working binary.
-printf '#!/bin/sh\necho testbin 1.0.0\n' > "$TMP/fleet-good"
+printf '#!/bin/sh\necho testbin 1.0.0\n' >"$TMP/fleet-good"
 chmod +x "$TMP/fleet-good"
 
 got=$(resolve_test_exec "$TMP/fleet-dead" "$TMP/fleet-broken" "$TMP/fleet-good" || true)

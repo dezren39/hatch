@@ -35,31 +35,45 @@ SHIM=/home/hatch/tools/taint-shim/taint_shim.so
 # nix with the shim, bypassing the /usr/local/bin wrapper (overlay-ephemeral).
 xnix() { LD_PRELOAD="$SHIM" "$NIXBIN" "$@"; }
 
-die() { printf 'dispatcher: %s\n' "$1" >&2; exit "${2:-127}"; }
+die() {
+  printf 'dispatcher: %s\n' "$1" >&2
+  exit "${2:-127}"
+}
 
 # --- management commands (not a program lookup) ---
 case "${1:-}" in
   --gc-list)
-    for r in "$GCROOT_DIR"/*; do [ -e "$r" ] || continue
-      printf '%s -> %s\n' "$(basename "$r")" "$(readlink "$r")"; done
-    exit 0 ;;
+    for r in "$GCROOT_DIR"/*; do
+      [ -e "$r" ] || continue
+      printf '%s -> %s\n' "$(basename "$r")" "$(readlink "$r")"
+    done
+    exit 0
+    ;;
   --gc-remove)
     [ -n "${2:-}" ] || die "usage: dispatcher.sh --gc-remove <name[@version]>" 2
     rm -f "$GCROOT_DIR/$2" "$CACHE_DIR/$2" "$STUB_DIR/${2%%@*}"
-    echo "removed $2"; exit 0 ;;
+    echo "removed $2"
+    exit 0
+    ;;
   --refresh-index)
-    exec /home/hatch/tools/omnibin-refresh.sh ;;
+    exec /home/hatch/tools/omnibin-refresh.sh
+    ;;
 esac
 
 [ -n "${1:-}" ] || die "usage: dispatcher.sh <program[@version]> [args...]" 2
 [ -f "$OMNIBIN_FLAKE/flake.nix" ] || die "omnibin flake missing: $OMNIBIN_FLAKE" 2
 OMNIBIN="$OMNIBIN_FLAKE#omnibin"
 
-cmd="$1"; shift
-base="$cmd"; ver=""
-if [[ "$cmd" == *@* ]]; then base="${cmd%%@*}"; ver="${cmd#*@}"; fi
+cmd="$1"
+shift
+base="$cmd"
+ver=""
+if [[ "$cmd" == *@* ]]; then
+  base="${cmd%%@*}"
+  ver="${cmd#*@}"
+fi
 [ -n "$base" ] || die "empty program name" 2
-cache_key="$cmd"   # "name" or "name@version"
+cache_key="$cmd" # "name" or "name@version"
 
 # --- 1. cache hit? ---
 if [ -f "$CACHE_DIR/$cache_key" ]; then
@@ -132,13 +146,13 @@ fi
 
 # --- 5. cache the resolution ---
 mkdir -p "$CACHE_DIR"
-printf '%s' "$entry" > "$CACHE_DIR/$cache_key"
+printf '%s' "$entry" >"$CACHE_DIR/$cache_key"
 
 # --- 6. stub for subprocess/build-tool discovery (unversioned name only) ---
 mkdir -p "$STUB_DIR"
 stub="$STUB_DIR/$base"
 if [ ! -e "$stub" ]; then
-  cat > "$stub" <<EOF
+  cat >"$stub" <<EOF
 #!/bin/bash
 # Auto-generated stub by dispatcher.sh — do not edit.
 # Resolves '$base' via the dispatcher (cached) so subprocesses and build

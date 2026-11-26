@@ -19,8 +19,8 @@ declare -A WORKDIR=(
   [code]="$HOME/git/devtoday-code"
   [opencode]="$HOME/git/devtoday-opencode"
   [openchamber]="$HOME/git/devtoday-openchamber"
-  [zettel-dezren39]=""
-  [zettel-developing-today]=""
+  [zettel - dezren39]=""
+  [zettel - developing - today]=""
   [dezren39]=""
   # Note: developing-today/developing-today exists but is EMPTY (no commits),
   # so it has no gitlink yet — add it here once it has a first commit.
@@ -35,7 +35,10 @@ fi
 # Validate all names up front (a typo currently fails opaquely inside git,
 # mid-loop). Also accept --dry-run as the first argument.
 DRY_RUN=0
-if [ "$1" = "--dry-run" ]; then DRY_RUN=1; shift; fi
+if [ "$1" = "--dry-run" ]; then
+  DRY_RUN=1
+  shift
+fi
 for name in "$@"; do
   if [ -z "${WORKDIR[$name]+x}" ]; then
     echo "unknown submodule: $name (known: ${!WORKDIR[*]})" >&2
@@ -51,7 +54,9 @@ for name in "$@"; do
     if [ "$DRY_RUN" = 1 ]; then
       echo "$name: would run: git submodule update --init --depth 1 -- $path"
     elif ! git -C "$REPO_ROOT" submodule update --init --depth 1 -- "$path"; then
-      echo "$name: submodule update FAILED" >&2; FAILURES=$((FAILURES+1)); continue
+      echo "$name: submodule update FAILED" >&2
+      FAILURES=$((FAILURES + 1))
+      continue
     fi
   else
     echo "$name: already materialized at $path"
